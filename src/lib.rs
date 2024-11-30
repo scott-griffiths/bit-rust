@@ -3,10 +3,44 @@
 /// Bits is a struct that holds an arbitrary amount of binary data. The data is stored
 /// in a Vec<u8> but does not need to be a multiple of 8 bits. A bit offset and a bit length
 /// are stored.
+#[derive(Debug)]
 pub struct Bits {
     data: Vec<u8>,
     offset: u64,
     length: u64,
+}
+
+impl Clone for Bits {
+    fn clone(&self) -> Self {
+        Bits {
+            data: self.data.clone(),
+            offset: self.offset,
+            length: self.length,
+        }
+    }
+}
+
+impl PartialEq for Bits {
+    fn eq(&self, other: &Self) -> bool {
+        if self.length != other.length {
+            return false;
+        }
+        // let mut other_offset: &Bits = other;
+        // if other.offset != self.offset {
+        //     other_offset = &other.copy_with_new_offset(self.offset).unwrap();
+        // }
+        let other_offset: &Bits = if other.offset != self.offset {
+            &other.copy_with_new_offset(self.offset).unwrap()
+        } else {
+            other
+        };
+        for i in 0..self.data.len() {
+            if self.data[i] != other_offset.data[i] {
+                return false;
+            }
+        }
+        true
+    }
 }
 
 impl Bits {
@@ -98,6 +132,43 @@ impl Bits {
             length,
         }
     }
+    
+    pub fn join(bits_vec: &Vec<&Bits>) -> Bits {
+        if bits_vec.len() == 0 {
+            return Bits::from_zeros(0);
+        }
+        if bits_vec.len() == 1 {
+            return bits_vec[0].clone();
+        }
+        let mut data = bits_vec[0].data.clone();
+        let offset: u64 = bits_vec[0].offset;
+        let mut length: u64 = bits_vec[0].length;
+        // Go though the vec of Bits and set the offset of each to the number of bits in the final byte of the previous one
+        for bits in &bits_vec[1..] {
+            if bits.length == 0 {
+                continue;
+            }
+            let extra_bits = (length + offset) % 8;
+            let offset_bits = bits.copy_with_new_offset(extra_bits).unwrap();
+            if extra_bits == 0 {
+                data.extend(offset_bits.data);
+            }
+            else {
+                // Combine last byte of data with first byte of offset_bits.data.
+                // The first extra_bits come from the last byte of data, the rest from the first byte of offset_bits.data.
+                let last_byte = data.pop().unwrap() & !(0xff >> extra_bits);
+                let first_byte = offset_bits.data[0] & (0xff >> extra_bits);
+                data.push(last_byte + first_byte);
+                data.extend(&offset_bits.data[1..]);
+            }
+            length += bits.length;
+        }
+        Bits {
+            data,
+            offset,
+            length,
+        }
+    }
 
     fn copy_with_new_offset(&self, offset: u64) -> Result<Bits, String> {
         // Create a new Bits object with the same data but a different offset.
@@ -154,10 +225,15 @@ impl Bits {
         }
         else {
             let right_shift: u64 = offset - self.offset;
-            for i in 1..self.data.len() {
-                new_data[i] = (self.data[i] >> right_shift) + (self.data[i - 1] << (8 - right_shift));
-            }
             new_data[0] = self.data[0] >> right_shift;
+            if self.data.len() > 1 {
+                for i in 1..self.data.len() {
+                    new_data[i] = (self.data[i] >> right_shift) + (self.data[i - 1] << (8 - right_shift));
+                }
+            }
+            if new_byte_length > self.data.len() {
+                new_data[new_byte_length - 1] = self.data[self.data.len() - 1] << (8 - right_shift);
+            }
             Ok(Bits {
                 data: new_data,
                 offset,
@@ -329,5 +405,33 @@ mod tests {
         assert_eq!(left_shifted_bits.offset, 2);
         assert_eq!(left_shifted_bits.length, 6);
     }
-
+    
+    #[test]
+    fn join_whole_byte() {
+        let b1 = Bits::from_bytes(vec![5, 10, 20]).unwrap();
+        let b2 = Bits::from_bytes(vec![30, 40, 50]).unwrap();
+        let j = Bits::join(&vec![&b1, &b2, &b1]);
+        assert_eq!(j.data, vec![5, 10, 20, 30, 40, 50, 5, 10, 20]);
+        assert_eq!(j.offset, 0);
+        assert_eq!(j.length, 72);
+    }
+    
+    #[test]
+    fn join_single_bits() {
+        let b1 = Bits::from_bin("1").unwrap();
+        let b2 = Bits::from_bin("0").unwrap();
+        // let j = Bits::join(&vec![&b1, &b2, &b1]);
+        // assert_eq!(j.offset, 0);
+        // assert_eq!(j.length, 3);
+        // assert_eq!(j.data, vec![0b10100000]);
+        let b3 = Bits::from_bin("11111111").unwrap();
+        let j = Bits::join(&vec![&b2, &b3]);
+        assert_eq!(j.offset, 0);
+        assert_eq!(j.length, 9);
+        assert_eq!(j.data, vec![0b01111111, 0b10000000]);
+        let j = Bits::join(&vec![&b3, &b2, &b3]);
+        assert_eq!(j.offset, 0);
+        assert_eq!(j.length, 17);
+        assert_eq!(j, Bits::from_bin("11111111011111111").unwrap());
+    }
 }
