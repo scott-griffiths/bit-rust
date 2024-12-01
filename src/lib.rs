@@ -116,6 +116,17 @@ impl Bits {
         let padding = (8 - ((bin.len() as u64) % 8)) % 8;
         Bits::from_bytes_with_offsets(data, 0, padding)
     }
+    
+    pub fn to_bin(&self) -> String {
+        let x = self.data.iter()
+            .map(|byte| format!("{:08b}", byte))
+            .fold(String::new(), |mut acc, bin| {
+                acc.push_str(&bin);
+                acc
+            });
+        x[self.offset as usize..(self.offset + self.length) as usize].to_string()
+    }
+
 
     pub fn from_zeros(length: u64) -> Self {
         Bits {
@@ -362,6 +373,7 @@ mod tests {
         assert_eq!(bits.offset, 0);
         assert_eq!(bits.length, 8);
         let bits = Bits::from_ones(9);
+        assert_eq!(bits.to_bin(), "111111111");
         assert_eq!(bits.data[0], 0xff);
         assert_eq!(bits.data[1] & 0x80, 0x80);
         assert_eq!(bits.offset, 0);
@@ -388,19 +400,24 @@ mod tests {
     #[test]
     fn copy_with_new_offset() {
         let bits = Bits::from_bin("001100").unwrap();
+        assert_eq!(bits.to_bin(), "001100");
         let new_bits = bits.copy_with_new_offset(2).unwrap();
+        assert_eq!(new_bits.to_bin(), "001100");
         assert_eq!(new_bits.data, vec![0b00001100]);
         assert_eq!(new_bits.offset, 2);
         assert_eq!(new_bits.length, 6);
         let new_bits = bits.copy_with_new_offset(0).unwrap();
+        assert_eq!(new_bits.to_bin(), "001100");
         assert_eq!(new_bits.data, vec![0b00110000]);
         assert_eq!(new_bits.offset, 0);
         assert_eq!(new_bits.length, 6);
         let new_bits = bits.copy_with_new_offset(4).unwrap();
+        assert_eq!(new_bits.to_bin(), "001100");
         assert_eq!(new_bits.data, vec![0b00000011, 0b00000000]);
         assert_eq!(new_bits.offset, 4);
         assert_eq!(new_bits.length, 6);
         let left_shifted_bits = new_bits.copy_with_new_offset(2).unwrap();
+        assert_eq!(left_shifted_bits.to_bin(), "001100");
         assert_eq!(left_shifted_bits.data, vec![0b00001100]);
         assert_eq!(left_shifted_bits.offset, 2);
         assert_eq!(left_shifted_bits.length, 6);
@@ -420,10 +437,10 @@ mod tests {
     fn join_single_bits() {
         let b1 = Bits::from_bin("1").unwrap();
         let b2 = Bits::from_bin("0").unwrap();
-        // let j = Bits::join(&vec![&b1, &b2, &b1]);
-        // assert_eq!(j.offset, 0);
-        // assert_eq!(j.length, 3);
-        // assert_eq!(j.data, vec![0b10100000]);
+        let j = Bits::join(&vec![&b1, &b2, &b1]);
+        assert_eq!(j.offset, 0);
+        assert_eq!(j.length, 3);
+        assert_eq!(j.data, vec![0b10100000]);
         let b3 = Bits::from_bin("11111111").unwrap();
         let j = Bits::join(&vec![&b2, &b3]);
         assert_eq!(j.offset, 0);
