@@ -25,10 +25,6 @@ impl PartialEq for Bits {
         if self.length != other.length {
             return false;
         }
-        // let mut other_offset: &Bits = other;
-        // if other.offset != self.offset {
-        //     other_offset = &other.copy_with_new_offset(self.offset).unwrap();
-        // }
         let other_offset: &Bits = if other.offset != self.offset {
             &other.copy_with_new_offset(self.offset).unwrap()
         } else {
@@ -52,9 +48,18 @@ impl Bits {
                 (data.len() as u64) * 8
             ));
         }
+        if offset < 8 && (offset + length + 7) / 8 == data.len() as u64 {
+            return Ok(Bits {
+                data,
+                offset,
+                length,
+            });
+        }
+        let start_byte = (offset / 8) as usize;
+        let end_byte = ((offset + length + 7) / 8) as usize;
         Ok(Bits {
-            data,
-            offset,
+            data: data[start_byte..end_byte].to_vec(),
+            offset: offset % 8,
             length,
         })
     }
@@ -76,7 +81,7 @@ impl Bits {
         })
     }
 
-    fn get_index(&self, bit_index: u64) -> Result<bool, String> {
+    pub fn get_index(&self, bit_index: u64) -> Result<bool, String> {
         if bit_index >= self.length {
             return Err(format!(
                 "Bit index {} is greater than length {}.",
@@ -86,6 +91,28 @@ impl Bits {
         let p: u64 = bit_index + self.offset;
         let byte = self.data[(p / 8) as usize];
         Ok(byte & (128 >> (p % 8)) != 0)
+    }
+
+    pub fn get_slice(&self, start_bit: Option<u64>, end_bit: Option<u64>) -> Result<Self, String> {
+        let start_bit = start_bit.unwrap_or_else(|| 0);
+        let end_bit = end_bit.unwrap_or_else(|| self.length);
+        if start_bit > end_bit {
+            return Err(format!("start_bit is greater than end_bit: {} > {}.", start_bit, end_bit));
+        }
+        if end_bit > self.length {
+            return Err(format!("end_bit ({}) is greater than the length ({}).", end_bit, self.length));
+        }
+        let start_byte = (start_bit + self.offset) / 8;
+        let end_byte = (end_bit + self.offset + 7) / 8;
+        let new_offset = (start_bit + self.offset) % 8;
+        debug_assert!(end_bit >= start_bit);
+        let new_length = end_bit - start_bit;
+        let x = Bits {
+            data: self.data[start_byte as usize..end_byte as usize].to_vec(),
+            offset: new_offset,
+            length: new_length,
+        };
+        Ok(x)
     }
 
     pub fn from_bytes(data: Vec<u8>) -> Result<Self, String> {
@@ -116,7 +143,7 @@ impl Bits {
         let padding = (8 - ((bin.len() as u64) % 8)) % 8;
         Bits::from_bytes_with_offsets(data, 0, padding)
     }
-    
+
     pub fn to_bin(&self) -> String {
         let x = self.data.iter()
             .map(|byte| format!("{:08b}", byte))
@@ -127,6 +154,37 @@ impl Bits {
         x[self.offset as usize..(self.offset + self.length) as usize].to_string()
     }
 
+    pub fn to_hex(&self) -> Result<String, String> {
+        if self.length % 4 != 0 {
+            return Err(format!("Bits must be a multiple of 4 to convert to hex, got length of {}", self.length));
+        }
+        let nibble_offset_data: &Vec<u8> =
+            if self.offset == 0 || self.offset == 4
+            { &self.data }
+            else
+            { &self.copy_with_new_offset(0)?.data };
+        if self.offset == 0 || self.offset == 4 {
+            let x = nibble_offset_data.iter()
+                .map(|byte| format!("{:02x}", byte))
+                .fold(String::new(), |mut acc, hex| {
+                    acc.push_str(&hex);
+                    acc
+                });
+            if self.offset == 0 {
+                if self.length % 8 == 0 {
+                    return Ok(x);
+                }
+                debug_assert_eq!(self.length % 8, 4);
+                return Ok(x[..x.len()-1].to_string());
+            }
+            debug_assert_eq!(self.offset, 4);
+            if self.length % 8 == 0 {
+                return Ok(x[1..x.len()-1].to_string());
+            }
+            return Ok(x[1..].to_string());
+        }
+        return Ok("TODO".to_string());
+    }
 
     pub fn from_zeros(length: u64) -> Self {
         Bits {
@@ -143,7 +201,7 @@ impl Bits {
             length,
         }
     }
-    
+
     pub fn join(bits_vec: &Vec<&Bits>) -> Bits {
         if bits_vec.len() == 0 {
             return Bits::from_zeros(0);
@@ -185,7 +243,7 @@ impl Bits {
         // Create a new Bits object with the same data but a different offset.
         // Each byte will in general have to be bit shifted to the left or right.
         if self.data.len() == 0 {
-            assert_eq!(self.length, 0);
+            debug_assert_eq!(self.length, 0);
             if offset != 0 {
                 return Err("The offset of an empty Bits can only be zero.".to_string());
             }
@@ -195,13 +253,28 @@ impl Bits {
                 length: 0,
             });
         }
-        if offset == self.offset {
-            // Nothing to do - just make a copy.
-            return Ok(Bits {
-                data: self.data.clone(),
-                offset: self.offset,
-                length: self.length,
-            });
+        if offset % 8 == self.offset % 8 {
+            // No bit shifts to do.
+            if offset < 8 {
+                return Ok(Bits {
+                    data: self.data.clone(),
+                    offset: self.offset,
+                    length: self.length,
+                });
+            }
+            else {
+                if ((offset + self.length + 7) / 8) as usize > self.data.len() {
+                    return Err(format!("Can't change the offset to {} with a length of {} and only {} bytes of data",
+                    offset, self.length, self.data.len()));
+                }
+                let start_byte = (offset / 8) as usize;
+                let end_byte = ((offset + self.length + 7) / 8) as usize;
+                return Ok(Bits {
+                    data: self.data[start_byte..end_byte].to_vec(),
+                    offset: offset % 8,
+                    length: self.length,
+                });
+            }
         }
         let new_byte_length = ((self.length + offset + 7) / 8) as usize;
         let mut new_data: Vec<u8> = vec![0; new_byte_length];
@@ -224,7 +297,7 @@ impl Bits {
                 new_data[new_byte_length - 1] = self.data[self.data.len() - 1] << left_shift;
             }
             else {
-                assert_eq!(new_byte_length, self.data.len() - 1);
+                debug_assert_eq!(new_byte_length, self.data.len() - 1);
                 new_data[new_byte_length - 1] = self.data[self.data.len() - 2] << left_shift;
                 new_data[new_byte_length - 1] += self.data[self.data.len() - 1] >> (8 - left_shift);
             }
@@ -356,6 +429,7 @@ mod tests {
         assert_eq!(bits.data, vec![0]);
         assert_eq!(bits.offset, 0);
         assert_eq!(bits.length, 8);
+        assert_eq!(bits.to_hex().unwrap(), "00");
         let bits = Bits::from_zeros(9);
         assert_eq!(bits.data, vec![0, 0]);
         assert_eq!(bits.offset, 0);
@@ -372,8 +446,10 @@ mod tests {
         assert_eq!(bits.data, vec![255]);
         assert_eq!(bits.offset, 0);
         assert_eq!(bits.length, 8);
+        assert_eq!(bits.to_hex().unwrap(), "ff");
         let bits = Bits::from_ones(9);
         assert_eq!(bits.to_bin(), "111111111");
+        assert!(bits.to_hex().is_err());
         assert_eq!(bits.data[0], 0xff);
         assert_eq!(bits.data[1] & 0x80, 0x80);
         assert_eq!(bits.offset, 0);
@@ -422,7 +498,7 @@ mod tests {
         assert_eq!(left_shifted_bits.offset, 2);
         assert_eq!(left_shifted_bits.length, 6);
     }
-    
+
     #[test]
     fn join_whole_byte() {
         let b1 = Bits::from_bytes(vec![5, 10, 20]).unwrap();
@@ -432,7 +508,7 @@ mod tests {
         assert_eq!(j.offset, 0);
         assert_eq!(j.length, 72);
     }
-    
+
     #[test]
     fn join_single_bits() {
         let b1 = Bits::from_bin("1").unwrap();
@@ -450,5 +526,15 @@ mod tests {
         assert_eq!(j.offset, 0);
         assert_eq!(j.length, 17);
         assert_eq!(j, Bits::from_bin("11111111011111111").unwrap());
+    }
+
+    #[test]
+    fn hex_edge_cases() {
+        let b1 = Bits::from_hex("0123456789abcdef").unwrap();
+        let b2 = b1.get_slice(Some(12), None).unwrap();
+        assert_eq!(b2.to_hex().unwrap(), "3456789abcdef");
+
+        let b2 = Bits::new(vec![0x01, 0x23, 0x45, 0x67], 12, 12).unwrap();
+        assert_eq!(b2.to_hex().unwrap(), "345");
     }
 }
