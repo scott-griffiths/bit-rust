@@ -63,15 +63,15 @@ impl Bits {
             length,
         })
     }
-    
+
     pub fn get_offset(&self) -> u64 {
         self.offset
     }
-    
+
     pub fn get_length(&self) -> u64 {
         self.length
     }
-    
+
     pub fn get_data(&self) -> &Vec<u8> {
         &self.data
     }
@@ -170,32 +170,28 @@ impl Bits {
         if self.length % 4 != 0 {
             return Err(format!("Bits must be a multiple of 4 to convert to hex, got length of {}", self.length));
         }
-        let nibble_offset_data: &Vec<u8> =
-            if self.offset == 0 || self.offset == 4
-            { &self.data }
-            else
-            { &self.copy_with_new_offset(0)?.data };
-        if self.offset == 0 || self.offset == 4 {
-            let x = nibble_offset_data.iter()
-                .map(|byte| format!("{:02x}", byte))
-                .fold(String::new(), |mut acc, hex| {
-                    acc.push_str(&hex);
-                    acc
-                });
-            if self.offset == 0 {
-                if self.length % 8 == 0 {
-                    return Ok(x);
-                }
-                debug_assert_eq!(self.length % 8, 4);
-                return Ok(x[..x.len()-1].to_string());
-            }
-            debug_assert_eq!(self.offset, 4);
+        let nibble_offset_data: &Vec<u8> = if self.offset == 0 || self.offset == 4 {
+            &self.data
+        } else {
+            &self.copy_with_new_offset(0)?.data
+        };
+        let x = nibble_offset_data.iter()
+            .map(|byte| format!("{:02x}", byte))
+            .fold(String::new(), |mut acc, hex| {
+                acc.push_str(&hex);
+                acc
+            });
+        if self.offset == 4 {
             if self.length % 8 == 0 {
                 return Ok(x[1..x.len()-1].to_string());
             }
             return Ok(x[1..].to_string());
         }
-        return Ok("TODO".to_string());
+        if self.length % 8 == 0 {
+            return Ok(x);
+        }
+        debug_assert_eq!(self.length % 8, 4);
+        Ok(x[..x.len()-1].to_string())
     }
 
     pub fn from_zeros(length: u64) -> Self {
@@ -367,7 +363,7 @@ impl Bits {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn binary_string_to_vec_u8() {
         let mut data = Bits::binary_string_to_vec_u8("00001010").unwrap();
@@ -381,7 +377,7 @@ mod tests {
         let data = Bits::binary_string_to_vec_u8("hello");
         assert!(data.is_err());
     }
-    
+
     #[test]
     fn copy_with_new_offset() {
         let bits = Bits::from_bin("001100").unwrap();

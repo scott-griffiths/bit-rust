@@ -142,3 +142,12 @@ fn hex_edge_cases() {
     let b2 = Bits::new(vec![0x01, 0x23, 0x45, 0x67], 12, 12).unwrap();
     assert_eq!(b2.to_hex().unwrap(), "345");
 }
+
+#[test]
+fn a_few_things() {
+    let b1 = Bits::from_hex("abcdef").unwrap();
+    let b2 = Bits::from_bin("01").unwrap();
+    let b3 = Bits::join(&vec![&b1, &b2, &b1, &b2]);
+    assert_eq!(b3.to_hex().unwrap(), "abcdef6af37bd");
+    assert_eq!(b3.get_slice(Some(b1.get_length() + 2), Some(b3.get_length() - 2)).unwrap().to_hex().unwrap(), "abcdef");
+}
