@@ -55,7 +55,7 @@ impl PartialEq for Bits {
             return false;
         }
         let other_offset: &Bits = if other.offset != self.offset {
-            &other.copy_with_new_offset(self.offset).unwrap()
+            &other.copy_with_new_offset(self.offset)
         } else {
             other
         };
@@ -191,7 +191,7 @@ impl Bits {
         let nibble_offset_data: &Vec<u8> = if self.offset == 0 || self.offset == 4 {
             &self.data
         } else {
-            &self.copy_with_new_offset(0)?.data
+            &self.copy_with_new_offset(0).data
         };
         let x = nibble_offset_data.iter()
             .map(|byte| format!("{:02x}", byte))
@@ -244,7 +244,7 @@ impl Bits {
                 continue;
             }
             let extra_bits = (length + offset) % 8;
-            let offset_bits = bits.copy_with_new_offset(extra_bits).unwrap();
+            let offset_bits = bits.copy_with_new_offset(extra_bits);
             if extra_bits == 0 {
                 data.extend(offset_bits.data);
             }
@@ -265,41 +265,43 @@ impl Bits {
         }
     }
 
-    fn copy_with_new_offset(&self, offset: u64) -> Result<Bits, BitsError> {
+    fn copy_with_new_offset(&self, offset: u64) -> Self {
         // Create a new Bits object with the same data but a different offset.
         // Each byte will in general have to be bit shifted to the left or right.
         if self.data.len() == 0 {
             debug_assert_eq!(self.length, 0);
-            if offset != 0 {
-                return Err(BitsError::Error("The offset of an empty Bits can only be zero.".to_string()));
-            }
-            return Ok(Bits {
+            debug_assert_eq!(offset, 0);
+            return Bits {
                 data: vec![],
                 offset: 0,
                 length: 0,
-            });
+            };
         }
         if offset % 8 == self.offset % 8 {
             // No bit shifts to do.
             if offset < 8 {
-                return Ok(Bits {
+                return Bits {
                     data: self.data.clone(),
                     offset: self.offset,
                     length: self.length,
-                });
+                };
             }
             else {
                 if ((offset + self.length + 7) / 8) as usize > self.data.len() {
-                    return Err(BitsError::Error(format!("Can't change the offset to {} with a length of {} and only {} bytes of data",
-                                                        offset, self.length, self.data.len())));
+                    debug_assert!(false); // This shouldn't happen, but just return empty Bits.
+                    return Bits {
+                        data: vec![],
+                        offset: 0,
+                        length: 0,
+                    };
                 }
                 let start_byte = (offset / 8) as usize;
                 let end_byte = ((offset + self.length + 7) / 8) as usize;
-                return Ok(Bits {
+                return Bits {
                     data: self.data[start_byte..end_byte].to_vec(),
                     offset: offset % 8,
                     length: self.length,
-                });
+                };
             }
         }
         let new_byte_length = ((self.length + offset + 7) / 8) as usize;
@@ -308,11 +310,11 @@ impl Bits {
             let left_shift: u64 = self.offset - offset;
             if self.data.len() == 1 {
                 new_data[0] = self.data[0] << left_shift;
-                return Ok(Bits {
+                return Bits {
                     data: new_data,
                     offset,
                     length: self.length,
-                });
+                };
             }
             assert!(self.data.len() > 1);
             for i in 0..new_byte_length - 1 {
@@ -327,11 +329,11 @@ impl Bits {
                 new_data[new_byte_length - 1] = self.data[self.data.len() - 2] << left_shift;
                 new_data[new_byte_length - 1] += self.data[self.data.len() - 1] >> (8 - left_shift);
             }
-            Ok(Bits {
+            Bits {
                 data: new_data,
                 offset,
                 length: self.length,
-            })
+            }
         }
         else {
             let right_shift: u64 = offset - self.offset;
@@ -344,11 +346,11 @@ impl Bits {
             if new_byte_length > self.data.len() {
                 new_data[new_byte_length - 1] = self.data[self.data.len() - 1] << (8 - right_shift);
             }
-            Ok(Bits {
+            Bits {
                 data: new_data,
                 offset,
                 length: self.length,
-            })
+            }
         }
     }
 
@@ -400,22 +402,22 @@ mod tests {
     fn copy_with_new_offset() {
         let bits = Bits::from_bin("001100").unwrap();
         assert_eq!(bits.to_bin(), "001100");
-        let new_bits = bits.copy_with_new_offset(2).unwrap();
+        let new_bits = bits.copy_with_new_offset(2);
         assert_eq!(new_bits.to_bin(), "001100");
         assert_eq!(new_bits.data, vec![0b00001100]);
         assert_eq!(new_bits.offset, 2);
         assert_eq!(new_bits.length, 6);
-        let new_bits = bits.copy_with_new_offset(0).unwrap();
+        let new_bits = bits.copy_with_new_offset(0);
         assert_eq!(new_bits.to_bin(), "001100");
         assert_eq!(new_bits.data, vec![0b00110000]);
         assert_eq!(new_bits.offset, 0);
         assert_eq!(new_bits.length, 6);
-        let new_bits = bits.copy_with_new_offset(4).unwrap();
+        let new_bits = bits.copy_with_new_offset(4);
         assert_eq!(new_bits.to_bin(), "001100");
         assert_eq!(new_bits.data, vec![0b00000011, 0b00000000]);
         assert_eq!(new_bits.offset, 4);
         assert_eq!(new_bits.length, 6);
-        let left_shifted_bits = new_bits.copy_with_new_offset(2).unwrap();
+        let left_shifted_bits = new_bits.copy_with_new_offset(2);
         assert_eq!(left_shifted_bits.to_bin(), "001100");
         assert_eq!(left_shifted_bits.data, vec![0b00001100]);
         assert_eq!(left_shifted_bits.offset, 2);
