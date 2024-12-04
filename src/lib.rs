@@ -1,4 +1,4 @@
-
+use std::fmt;
 
 /// Bits is a struct that holds an arbitrary amount of binary data. The data is stored
 /// in a Vec<u8> but does not need to be a multiple of 8 bits. A bit offset and a bit length
@@ -8,6 +8,35 @@ pub struct Bits {
     data: Vec<u8>,
     offset: u64,
     length: u64,
+}
+
+#[derive(Debug)]
+pub enum BitsError {
+    Error(String),
+    OutOfBounds(u64, u64),
+    InvalidCharacter(char),
+    InvalidLength(u64),
+    HexDecodeError(hex::FromHexError),
+}
+
+impl fmt::Display for BitsError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BitsError::Error(s) => write!(f, "{}", s),
+            BitsError::OutOfBounds(i, l) => write!(f, "Index {} out of bounds of length {}.", i, l),
+            BitsError::InvalidCharacter(c) => write!(f, "Invalid character in binary string: {}", c),
+            BitsError::InvalidLength(len) => write!(f, "Invalid length: {}", len),
+            BitsError::HexDecodeError(e) => write!(f, "Hex decode error: {}", e),
+        }
+    }
+}
+
+impl std::error::Error for BitsError {}
+
+impl From<hex::FromHexError> for BitsError {
+    fn from(err: hex::FromHexError) -> BitsError {
+        BitsError::HexDecodeError(err)
+    }
 }
 
 impl Clone for Bits {
@@ -40,13 +69,9 @@ impl PartialEq for Bits {
 }
 
 impl Bits {
-    pub fn new(data: Vec<u8>, offset: u64, length: u64) -> Result<Self, String> {
+    pub fn new(data: Vec<u8>, offset: u64, length: u64) -> Result<Self, BitsError> {
         if offset + length > (data.len() as u64) * 8 {
-            return Err(format!(
-                "Offset + length ({} bits) is greater than data length ({} bits).",
-                offset + length,
-                (data.len() as u64) * 8
-            ));
+            return Err(BitsError::InvalidLength(offset + length));
         }
         if offset < 8 && (offset + length + 7) / 8 == data.len() as u64 {
             return Ok(Bits {
@@ -76,14 +101,10 @@ impl Bits {
         &self.data
     }
 
-    fn from_bytes_with_offsets(data: Vec<u8>, offset: u64, padding: u64) -> Result<Self, String> {
+    fn from_bytes_with_offsets(data: Vec<u8>, offset: u64, padding: u64) -> Result<Self, BitsError> {
         let bitlength = (data.len() as u64) * 8;
         if bitlength < offset + padding {
-            return Err(format!(
-                "Offset + padding ({} bits) is greater than data length ({} bits).",
-                offset + padding,
-                bitlength
-            ));
+            return Err(BitsError::OutOfBounds(offset + padding, bitlength));
         }
         let length: u64 = bitlength - offset - padding;
         Ok(Bits {
@@ -93,26 +114,23 @@ impl Bits {
         })
     }
 
-    pub fn get_index(&self, bit_index: u64) -> Result<bool, String> {
+    pub fn get_index(&self, bit_index: u64) -> Result<bool, BitsError> {
         if bit_index >= self.length {
-            return Err(format!(
-                "Bit index {} is greater than length {}.",
-                bit_index, self.length
-            ));
+            return Err(BitsError::OutOfBounds(bit_index, self.length));
         }
         let p: u64 = bit_index + self.offset;
         let byte = self.data[(p / 8) as usize];
         Ok(byte & (128 >> (p % 8)) != 0)
     }
 
-    pub fn get_slice(&self, start_bit: Option<u64>, end_bit: Option<u64>) -> Result<Self, String> {
+    pub fn get_slice(&self, start_bit: Option<u64>, end_bit: Option<u64>) -> Result<Self, BitsError> {
         let start_bit = start_bit.unwrap_or_else(|| 0);
         let end_bit = end_bit.unwrap_or_else(|| self.length);
         if start_bit > end_bit {
-            return Err(format!("start_bit is greater than end_bit: {} > {}.", start_bit, end_bit));
+            return Err(BitsError::Error(format!("start_bit is greater than end_bit: {} > {}.", start_bit, end_bit)));
         }
         if end_bit > self.length {
-            return Err(format!("end_bit ({}) is greater than the length ({}).", end_bit, self.length));
+            return Err(BitsError::OutOfBounds(end_bit, self.length));
         }
         let start_byte = (start_bit + self.offset) / 8;
         let end_byte = (end_bit + self.offset + 7) / 8;
@@ -127,16 +145,16 @@ impl Bits {
         Ok(x)
     }
 
-    pub fn from_bytes(data: Vec<u8>) -> Result<Self, String> {
+    pub fn from_bytes(data: Vec<u8>) -> Self {
         let bitlength = (data.len() as u64) * 8;
-        Ok(Bits {
+        Bits {
             data,
             offset: 0,
             length: bitlength,
-        })
+        }
     }
 
-    pub fn from_hex(hex: &str) -> Result<Self, String> {
+    pub fn from_hex(hex: &str) -> Result<Self, BitsError> {
         let mut hex = hex.to_string();
         let is_odd_length: bool = hex.len() % 2 != 0;
         if is_odd_length {
@@ -144,13 +162,13 @@ impl Bits {
         }
         let data = match hex::decode(hex) {
             Ok(d) => d,
-            Err(e) => return Err(e.to_string()),
+            Err(e) => return Err(BitsError::HexDecodeError(e)),
         };
         let padding = if is_odd_length { 4 } else { 0 };
         Bits::from_bytes_with_offsets(data, 0, padding)
     }
 
-    pub fn from_bin(bin: &str) -> Result<Self, String> {
+    pub fn from_bin(bin: &str) -> Result<Self, BitsError> {
         let data = Bits::binary_string_to_vec_u8(bin)?;
         let padding = (8 - ((bin.len() as u64) % 8)) % 8;
         Bits::from_bytes_with_offsets(data, 0, padding)
@@ -166,9 +184,9 @@ impl Bits {
         x[self.offset as usize..(self.offset + self.length) as usize].to_string()
     }
 
-    pub fn to_hex(&self) -> Result<String, String> {
+    pub fn to_hex(&self) -> Result<String, BitsError> {
         if self.length % 4 != 0 {
-            return Err(format!("Bits must be a multiple of 4 to convert to hex, got length of {}", self.length));
+            return Err(BitsError::InvalidLength(self.length));
         }
         let nibble_offset_data: &Vec<u8> = if self.offset == 0 || self.offset == 4 {
             &self.data
@@ -247,13 +265,13 @@ impl Bits {
         }
     }
 
-    fn copy_with_new_offset(&self, offset: u64) -> Result<Bits, String> {
+    fn copy_with_new_offset(&self, offset: u64) -> Result<Bits, BitsError> {
         // Create a new Bits object with the same data but a different offset.
         // Each byte will in general have to be bit shifted to the left or right.
         if self.data.len() == 0 {
             debug_assert_eq!(self.length, 0);
             if offset != 0 {
-                return Err("The offset of an empty Bits can only be zero.".to_string());
+                return Err(BitsError::Error("The offset of an empty Bits can only be zero.".to_string()));
             }
             return Ok(Bits {
                 data: vec![],
@@ -272,8 +290,8 @@ impl Bits {
             }
             else {
                 if ((offset + self.length + 7) / 8) as usize > self.data.len() {
-                    return Err(format!("Can't change the offset to {} with a length of {} and only {} bytes of data",
-                    offset, self.length, self.data.len()));
+                    return Err(BitsError::Error(format!("Can't change the offset to {} with a length of {} and only {} bytes of data",
+                                                        offset, self.length, self.data.len())));
                 }
                 let start_byte = (offset / 8) as usize;
                 let end_byte = ((offset + self.length + 7) / 8) as usize;
@@ -334,7 +352,7 @@ impl Bits {
         }
     }
 
-    fn binary_string_to_vec_u8(binary_string: &str) -> Result<Vec<u8>, String> {
+    fn binary_string_to_vec_u8(binary_string: &str) -> Result<Vec<u8>, BitsError> {
         let mut data: Vec<u8> = Vec::new();
         let mut byte: u8 = 0;
         let mut bit_count = 0;
@@ -343,7 +361,7 @@ impl Bits {
                 byte |= 1 << (7 - bit_count);
             }
             else if c != '0' {
-                return Err(format!("Invalid character in binary string: {}", c));
+                return Err(BitsError::InvalidCharacter(c));
             }
             bit_count += 1;
             if bit_count == 8 {

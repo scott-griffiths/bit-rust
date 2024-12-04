@@ -1,7 +1,7 @@
 use bit_rust::Bits;
 
 #[test]
-fn new() {
+fn new1() {
     let data: Vec<u8> = vec![10, 20, 30];
     let bits = Bits::new(data, 0, 24).unwrap();
     assert_eq!(*bits.get_data(), vec![10, 20, 30]);
@@ -10,9 +10,15 @@ fn new() {
 }
 
 #[test]
+fn new2() {
+    let bits = Bits::new(vec![], 0, 0).unwrap();
+    assert_eq!(bits.get_length(), 0);
+}
+
+#[test]
 fn from_bytes() {
     let data: Vec<u8> = vec![10, 20, 30];
-    let bits = Bits::from_bytes(data).unwrap();
+    let bits = Bits::from_bytes(data);
     assert_eq!(*bits.get_data(), vec![10, 20, 30]);
     assert_eq!(bits.get_offset(), 0);
     assert_eq!(bits.get_length(), 24);
@@ -107,7 +113,7 @@ fn get_index() {
 #[test]
 fn join_whole_byte() {
     let b1 = Bits::new(vec![5, 10, 20], 0, 24).unwrap();
-    let b2 = Bits::from_bytes(vec![30, 40, 50]).unwrap();
+    let b2 = Bits::from_bytes(vec![30, 40, 50]);
     let j = Bits::join(&vec![&b1, &b2, &b1]);
     assert_eq!(*j.get_data(), vec![5, 10, 20, 30, 40, 50, 5, 10, 20]);
     assert_eq!(j.get_offset(), 0);
