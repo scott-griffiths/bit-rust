@@ -191,4 +191,21 @@ fn test_reverse() {
     let b = Bits::from_bin("11001").unwrap();
     let bp = b.reverse();
     assert_eq!(bp.to_bin(), "10011");
+    let hex_str = "98798379287592836521000cbdbeff";
+    let long = Bits::from_hex(hex_str).unwrap();
+    let rev = long.reverse();
+    assert_eq!(rev.reverse(), long);
+}
+
+#[test]
+fn test_invert() {
+    let b = Bits::from_bin("0").unwrap();
+    assert_eq!(b.invert().to_bin(), "1");
+    let b = Bits::from_bin("01110").unwrap();
+    assert_eq!(b.invert().to_bin(), "10001");
+    let hex_str = "abcdef8716258765162548716258176253172635712654714";
+    let long = Bits::from_hex(hex_str).unwrap();
+    let temp = long.invert();
+    assert_eq!(long.length(), temp.length());
+    assert_eq!(temp.invert(), long);
 }

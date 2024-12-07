@@ -266,30 +266,26 @@ impl Bits {
         }
     }
     
-    fn count(&self, count_ones: bool) -> u64 {
+    fn count(&self) -> u64 {
         let mut count: u64 = 0;
         let clipped = self.copy_with_new_offset(0);
         for byte in clipped.data.iter() {
             count += byte.count_ones() as u64;
         }
-        if !count_ones {
-            return self.length - count;
-        }
         count
     }
     
     pub fn count_ones(&self) -> u64 {
-        self.count(true)
+        self.count()
     }
     
     pub fn count_zeros(&self) -> u64 {
-        self.count(false)
+        self.length - self.count()
     }
     
     pub fn reverse(&self) -> Self {
         let mut data: Vec<u8> = Vec::new();
-        let clipped = self.copy_with_new_offset(0);
-        for byte in clipped.data.iter().rev() {
+        for byte in self.data[self.start_byte()..self.end_byte()].iter() {
             data.push(byte.reverse_bits());
         }
         let final_bits = (self.offset + self.length) % 8;
@@ -297,6 +293,26 @@ impl Bits {
         Bits {
             data: Arc::new(data),
             offset: new_offset,
+            length: self.length,
+        }
+    }
+    
+    fn start_byte(&self) -> usize {
+        (self.offset / 8) as usize
+    }
+    
+    fn end_byte(&self) -> usize {
+        ((self.offset + self.length + 7) / 8) as usize
+    }
+    
+    pub fn invert(&self) -> Self {
+        let mut data: Vec<u8> = Vec::new();
+        for byte in self.data[self.start_byte()..self.end_byte()].iter() {
+            data.push(byte ^ 0xff);
+        }
+        Bits {
+            data: Arc::new(data),
+            offset: self.offset, 
             length: self.length,
         }
     }
