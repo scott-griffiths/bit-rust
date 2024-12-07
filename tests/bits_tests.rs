@@ -4,97 +4,97 @@ use bit_rust::Bits;
 fn new1() {
     let data: Vec<u8> = vec![10, 20, 30];
     let bits = Bits::new(data, 0, 24).unwrap();
-    assert_eq!(*bits.get_data(), vec![10, 20, 30]);
-    assert_eq!(bits.get_offset(), 0);
-    assert_eq!(bits.get_length(), 24);
+    assert_eq!(*bits.data(), vec![10, 20, 30]);
+    assert_eq!(bits.offset(), 0);
+    assert_eq!(bits.length(), 24);
 }
 
 #[test]
 fn new2() {
     let bits = Bits::new(vec![], 0, 0).unwrap();
-    assert_eq!(bits.get_length(), 0);
+    assert_eq!(bits.length(), 0);
 }
 
 #[test]
 fn from_bytes() {
     let data: Vec<u8> = vec![10, 20, 30];
     let bits = Bits::from_bytes(data);
-    assert_eq!(*bits.get_data(), vec![10, 20, 30]);
-    assert_eq!(bits.get_offset(), 0);
-    assert_eq!(bits.get_length(), 24);
+    assert_eq!(*bits.data(), vec![10, 20, 30]);
+    assert_eq!(bits.offset(), 0);
+    assert_eq!(bits.length(), 24);
 }
 
 #[test]
 fn from_hex() {
     let bits = Bits::from_hex("0a141e").unwrap();
-    assert_eq!(*bits.get_data(), vec![10, 20, 30]);
-    assert_eq!(bits.get_offset(), 0);
-    assert_eq!(bits.get_length(), 24);
+    assert_eq!(*bits.data(), vec![10, 20, 30]);
+    assert_eq!(bits.offset(), 0);
+    assert_eq!(bits.length(), 24);
     let bits = Bits::from_hex("").unwrap();
-    assert_eq!(*bits.get_data(), vec![]);
-    assert_eq!(bits.get_offset(), 0);
-    assert_eq!(bits.get_length(), 0);
+    assert_eq!(*bits.data(), vec![]);
+    assert_eq!(bits.offset(), 0);
+    assert_eq!(bits.length(), 0);
     let bits = Bits::from_hex("hello");
     assert!(bits.is_err());
     let bits = Bits::from_hex("1").unwrap();
-    assert_eq!(*bits.get_data(), vec![16]);
-    assert_eq!(bits.get_offset(), 0);
-    assert_eq!(bits.get_length(), 4);
+    assert_eq!(*bits.data(), vec![16]);
+    assert_eq!(bits.offset(), 0);
+    assert_eq!(bits.length(), 4);
 }
 
 #[test]
 fn from_bin() {
     let bits = Bits::from_bin("00001010").unwrap();
-    assert_eq!(*bits.get_data(), vec![10]);
-    assert_eq!(bits.get_offset(), 0);
-    assert_eq!(bits.get_length(), 8);
+    assert_eq!(*bits.data(), vec![10]);
+    assert_eq!(bits.offset(), 0);
+    assert_eq!(bits.length(), 8);
     let bits = Bits::from_bin("").unwrap();
-    assert_eq!(*bits.get_data(), vec![]);
-    assert_eq!(bits.get_offset(), 0);
-    assert_eq!(bits.get_length(), 0);
+    assert_eq!(*bits.data(), vec![]);
+    assert_eq!(bits.offset(), 0);
+    assert_eq!(bits.length(), 0);
     let bits = Bits::from_bin("hello");
     assert!(bits.is_err());
     let bits = Bits::from_bin("1").unwrap();
-    assert_eq!(*bits.get_data(), vec![128]);
-    assert_eq!(bits.get_offset(), 0);
-    assert_eq!(bits.get_length(), 1);
+    assert_eq!(*bits.data(), vec![128]);
+    assert_eq!(bits.offset(), 0);
+    assert_eq!(bits.length(), 1);
 }
 
 #[test]
 fn from_zeros() {
     let bits = Bits::from_zeros(8);
-    assert_eq!(*bits.get_data(), vec![0]);
-    assert_eq!(bits.get_offset(), 0);
-    assert_eq!(bits.get_length(), 8);
+    assert_eq!(*bits.data(), vec![0]);
+    assert_eq!(bits.offset(), 0);
+    assert_eq!(bits.length(), 8);
     assert_eq!(bits.to_hex().unwrap(), "00");
     let bits = Bits::from_zeros(9);
-    assert_eq!(*bits.get_data(), vec![0, 0]);
-    assert_eq!(bits.get_offset(), 0);
-    assert_eq!(bits.get_length(), 9);
+    assert_eq!(*bits.data(), vec![0, 0]);
+    assert_eq!(bits.offset(), 0);
+    assert_eq!(bits.length(), 9);
     let bits = Bits::from_zeros(0);
-    assert_eq!(*bits.get_data(), vec![]);
-    assert_eq!(bits.get_offset(), 0);
-    assert_eq!(bits.get_length(), 0);
+    assert_eq!(*bits.data(), vec![]);
+    assert_eq!(bits.offset(), 0);
+    assert_eq!(bits.length(), 0);
 }
 
 #[test]
 fn from_ones() {
     let bits = Bits::from_ones(8);
-    assert_eq!(*bits.get_data(), vec![255]);
-    assert_eq!(bits.get_offset(), 0);
-    assert_eq!(bits.get_length(), 8);
+    assert_eq!(*bits.data(), vec![255]);
+    assert_eq!(bits.offset(), 0);
+    assert_eq!(bits.length(), 8);
     assert_eq!(bits.to_hex().unwrap(), "ff");
     let bits = Bits::from_ones(9);
     assert_eq!(bits.to_bin(), "111111111");
     assert!(bits.to_hex().is_err());
-    assert_eq!((*bits.get_data())[0], 0xff);
-    assert_eq!((*bits.get_data())[1] & 0x80, 0x80);
-    assert_eq!(bits.get_offset(), 0);
-    assert_eq!(bits.get_length(), 9);
+    assert_eq!((*bits.data())[0], 0xff);
+    assert_eq!((*bits.data())[1] & 0x80, 0x80);
+    assert_eq!(bits.offset(), 0);
+    assert_eq!(bits.length(), 9);
     let bits = Bits::from_ones(0);
-    assert_eq!(*bits.get_data(), vec![]);
-    assert_eq!(bits.get_offset(), 0);
-    assert_eq!(bits.get_length(), 0);
+    assert_eq!(*bits.data(), vec![]);
+    assert_eq!(bits.offset(), 0);
+    assert_eq!(bits.length(), 0);
 }
 
 #[test]
@@ -115,9 +115,9 @@ fn join_whole_byte() {
     let b1 = Bits::new(vec![5, 10, 20], 0, 24).unwrap();
     let b2 = Bits::from_bytes(vec![30, 40, 50]);
     let j = Bits::join(&vec![&b1, &b2, &b1]);
-    assert_eq!(*j.get_data(), vec![5, 10, 20, 30, 40, 50, 5, 10, 20]);
-    assert_eq!(j.get_offset(), 0);
-    assert_eq!(j.get_length(), 72);
+    assert_eq!(*j.data(), vec![5, 10, 20, 30, 40, 50, 5, 10, 20]);
+    assert_eq!(j.offset(), 0);
+    assert_eq!(j.length(), 72);
 }
 
 #[test]
@@ -125,17 +125,17 @@ fn join_single_bits() {
     let b1 = Bits::from_bin("1").unwrap();
     let b2 = Bits::from_bin("0").unwrap();
     let bits = Bits::join(&vec![&b1, &b2, &b1]);
-    assert_eq!(bits.get_offset(), 0);
-    assert_eq!(bits.get_length(), 3);
-    assert_eq!(*bits.get_data(), vec![0b10100000]);
+    assert_eq!(bits.offset(), 0);
+    assert_eq!(bits.length(), 3);
+    assert_eq!(*bits.data(), vec![0b10100000]);
     let b3 = Bits::from_bin("11111111").unwrap();
     let j = Bits::join(&vec![&b2, &b3]);
-    assert_eq!(j.get_offset(), 0);
-    assert_eq!(j.get_length(), 9);
-    assert_eq!(*j.get_data(), vec![0b01111111, 0b10000000]);
+    assert_eq!(j.offset(), 0);
+    assert_eq!(j.length(), 9);
+    assert_eq!(*j.data(), vec![0b01111111, 0b10000000]);
     let j = Bits::join(&vec![&b3, &b2, &b3]);
-    assert_eq!(j.get_offset(), 0);
-    assert_eq!(j.get_length(), 17);
+    assert_eq!(j.offset(), 0);
+    assert_eq!(j.length(), 17);
     assert_eq!(j, Bits::from_bin("11111111011111111").unwrap());
 }
 
@@ -154,17 +154,17 @@ fn a_few_things() {
     let b1 = Bits::from_hex("abcdef").unwrap();
     let b2 = Bits::from_bin("01").unwrap();
     let b4 = Bits::join(&vec![&b1, &b2]);
-    assert_eq!(b4.get_length(), 26);
+    assert_eq!(b4.length(), 26);
     assert_eq!(b4.to_bin(), "10101011110011011110111101");
     let b5 = Bits::join(&vec![&b1, &b1]);
-    assert_eq!(b5.get_length(), 48);
+    assert_eq!(b5.length(), 48);
     assert_eq!(b5.to_hex().unwrap(), "abcdefabcdef");
     let b6 = Bits::join(&vec![&b2, &b2, &b1]);
-    assert_eq!(b6.get_length(), 28);
+    assert_eq!(b6.length(), 28);
     assert_eq!(b6.to_bin(), "0101101010111100110111101111");
     assert_eq!(b6.to_hex().unwrap(), "5abcdef");
     let b3 = Bits::join(&vec![&b1, &b2, &b1, &b2]);
-    assert_eq!(b3.get_length(), 52);
+    assert_eq!(b3.length(), 52);
     assert_eq!(b3.to_hex().unwrap(), "abcdef6af37bd");
     // assert_eq!(b3.get_slice(Some(b1.get_length() + 2), Some(b3.get_length() - 2)).unwrap().to_hex().unwrap(), "abcdef");
 }

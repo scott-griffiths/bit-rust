@@ -91,15 +91,15 @@ impl Bits {
         })
     }
 
-    pub fn get_offset(&self) -> u64 {
+    pub fn offset(&self) -> u64 {
         self.offset
     }
 
-    pub fn get_length(&self) -> u64 {
+    pub fn length(&self) -> u64 {
         self.length
     }
 
-    pub fn get_data(&self) -> &Vec<u8> {
+    pub fn data(&self) -> &Vec<u8> {
         &self.data
     }
 
