@@ -1,11 +1,13 @@
 use std::fmt;
+use std::fmt::Debug;
+use std::sync::Arc;
 
 /// Bits is a struct that holds an arbitrary amount of binary data. The data is stored
 /// in a Vec<u8> but does not need to be a multiple of 8 bits. A bit offset and a bit length
 /// are stored.
 #[derive(Debug)]
 pub struct Bits {
-    data: Vec<u8>,
+    data: Arc<Vec<u8>>,
     offset: u64,
     length: u64,
 }
@@ -42,7 +44,7 @@ impl From<hex::FromHexError> for BitsError {
 impl Clone for Bits {
     fn clone(&self) -> Self {
         Bits {
-            data: self.data.clone(),
+            data: Arc::clone(&self.data),
             offset: self.offset,
             length: self.length,
         }
@@ -75,7 +77,7 @@ impl Bits {
         }
         if offset < 8 && (offset + length + 7) / 8 == data.len() as u64 {
             return Ok(Bits {
-                data,
+                data: Arc::new(data),
                 offset,
                 length,
             });
@@ -83,7 +85,7 @@ impl Bits {
         let start_byte = (offset / 8) as usize;
         let end_byte = ((offset + length + 7) / 8) as usize;
         Ok(Bits {
-            data: data[start_byte..end_byte].to_vec(),
+            data: Arc::new(data[start_byte..end_byte].to_vec()),
             offset: offset % 8,
             length,
         })
@@ -108,7 +110,7 @@ impl Bits {
         }
         let length: u64 = bitlength - offset - padding;
         Ok(Bits {
-            data,
+            data: Arc::new(data),
             offset,
             length,
         })
@@ -132,14 +134,11 @@ impl Bits {
         if end_bit > self.length {
             return Err(BitsError::OutOfBounds(end_bit, self.length));
         }
-        let start_byte = (start_bit + self.offset) / 8;
-        let end_byte = (end_bit + self.offset + 7) / 8;
-        let new_offset = (start_bit + self.offset) % 8;
         debug_assert!(end_bit >= start_bit);
         let new_length = end_bit - start_bit;
         let x = Bits {
-            data: self.data[start_byte as usize..end_byte as usize].to_vec(),
-            offset: new_offset,
+            data: Arc::clone(&self.data),
+            offset: start_bit + self.offset,
             length: new_length,
         };
         Ok(x)
@@ -148,7 +147,7 @@ impl Bits {
     pub fn from_bytes(data: Vec<u8>) -> Self {
         let bitlength = (data.len() as u64) * 8;
         Bits {
-            data,
+            data: Arc::new(data),
             offset: 0,
             length: bitlength,
         }
@@ -188,8 +187,10 @@ impl Bits {
         if self.length % 4 != 0 {
             return Err(BitsError::InvalidLength(self.length));
         }
-        let nibble_offset_data: &Vec<u8> = if self.offset == 0 || self.offset == 4 {
-            &self.data
+        let (byte_start, bit_offset) = (self.offset / 8, self.offset % 8);
+        let byte_end = (self.offset + self.length + 7) / 8;
+        let nibble_offset_data: &Vec<u8> = if bit_offset == 0 || bit_offset == 4 {
+            &self.data[byte_start as usize..byte_end as usize].to_vec()
         } else {
             &self.copy_with_new_offset(0).data
         };
@@ -199,7 +200,7 @@ impl Bits {
                 acc.push_str(&hex);
                 acc
             });
-        if self.offset == 4 {
+        if bit_offset == 4 {
             if self.length % 8 == 0 {
                 return Ok(x[1..x.len()-1].to_string());
             }
@@ -214,7 +215,7 @@ impl Bits {
 
     pub fn from_zeros(length: u64) -> Self {
         Bits {
-            data: vec![0; ((length + 7) / 8) as usize],
+            data: Arc::new(vec![0; ((length + 7) / 8) as usize]),
             offset: 0,
             length,
         }
@@ -222,7 +223,7 @@ impl Bits {
 
     pub fn from_ones(length: u64) -> Self {
         Bits {
-            data: vec![0xff; ((length + 7) / 8) as usize],
+            data: Arc::new(vec![0xff; ((length + 7) / 8) as usize]),
             offset: 0,
             length,
         }
@@ -235,7 +236,7 @@ impl Bits {
         if bits_vec.len() == 1 {
             return bits_vec[0].clone();
         }
-        let mut data = bits_vec[0].data.clone();
+        let mut data = (*bits_vec[0].data).clone();
         let offset: u64 = bits_vec[0].offset;
         let mut length: u64 = bits_vec[0].length;
         // Go though the vec of Bits and set the offset of each to the number of bits in the final byte of the previous one
@@ -246,7 +247,7 @@ impl Bits {
             let extra_bits = (length + offset) % 8;
             let offset_bits = bits.copy_with_new_offset(extra_bits);
             if extra_bits == 0 {
-                data.extend(offset_bits.data);
+                data.extend((*offset_bits.data).clone());
             }
             else {
                 // Combine last byte of data with first byte of offset_bits.data.
@@ -259,7 +260,7 @@ impl Bits {
             length += bits.length;
         }
         Bits {
-            data,
+            data: Arc::new(data),
             offset,
             length,
         }
@@ -272,7 +273,7 @@ impl Bits {
             debug_assert_eq!(self.length, 0);
             debug_assert_eq!(offset, 0);
             return Bits {
-                data: vec![],
+                data: Arc::new(vec![]),
                 offset: 0,
                 length: 0,
             };
@@ -290,7 +291,7 @@ impl Bits {
                 if ((offset + self.length + 7) / 8) as usize > self.data.len() {
                     debug_assert!(false); // This shouldn't happen, but just return empty Bits.
                     return Bits {
-                        data: vec![],
+                        data: Arc::new(vec![]),
                         offset: 0,
                         length: 0,
                     };
@@ -298,7 +299,7 @@ impl Bits {
                 let start_byte = (offset / 8) as usize;
                 let end_byte = ((offset + self.length + 7) / 8) as usize;
                 return Bits {
-                    data: self.data[start_byte..end_byte].to_vec(),
+                    data: Arc::new(self.data[start_byte..end_byte].to_vec()),
                     offset: offset % 8,
                     length: self.length,
                 };
@@ -311,7 +312,7 @@ impl Bits {
             if self.data.len() == 1 {
                 new_data[0] = self.data[0] << left_shift;
                 return Bits {
-                    data: new_data,
+                    data: Arc::new(new_data),
                     offset,
                     length: self.length,
                 };
@@ -330,7 +331,7 @@ impl Bits {
                 new_data[new_byte_length - 1] += self.data[self.data.len() - 1] >> (8 - left_shift);
             }
             Bits {
-                data: new_data,
+                data: Arc::new(new_data),
                 offset,
                 length: self.length,
             }
@@ -347,7 +348,7 @@ impl Bits {
                 new_data[new_byte_length - 1] = self.data[self.data.len() - 1] << (8 - right_shift);
             }
             Bits {
-                data: new_data,
+                data: Arc::new(new_data),
                 offset,
                 length: self.length,
             }
@@ -404,22 +405,22 @@ mod tests {
         assert_eq!(bits.to_bin(), "001100");
         let new_bits = bits.copy_with_new_offset(2);
         assert_eq!(new_bits.to_bin(), "001100");
-        assert_eq!(new_bits.data, vec![0b00001100]);
+        assert_eq!(new_bits.data, vec![0b00001100].into());
         assert_eq!(new_bits.offset, 2);
         assert_eq!(new_bits.length, 6);
         let new_bits = bits.copy_with_new_offset(0);
         assert_eq!(new_bits.to_bin(), "001100");
-        assert_eq!(new_bits.data, vec![0b00110000]);
+        assert_eq!(new_bits.data, vec![0b00110000].into());
         assert_eq!(new_bits.offset, 0);
         assert_eq!(new_bits.length, 6);
         let new_bits = bits.copy_with_new_offset(4);
         assert_eq!(new_bits.to_bin(), "001100");
-        assert_eq!(new_bits.data, vec![0b00000011, 0b00000000]);
+        assert_eq!(new_bits.data, vec![0b00000011, 0b00000000].into());
         assert_eq!(new_bits.offset, 4);
         assert_eq!(new_bits.length, 6);
         let left_shifted_bits = new_bits.copy_with_new_offset(2);
         assert_eq!(left_shifted_bits.to_bin(), "001100");
-        assert_eq!(left_shifted_bits.data, vec![0b00001100]);
+        assert_eq!(left_shifted_bits.data, vec![0b00001100].into());
         assert_eq!(left_shifted_bits.offset, 2);
         assert_eq!(left_shifted_bits.length, 6);
     }
