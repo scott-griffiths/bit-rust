@@ -176,3 +176,19 @@ fn test_count() {
     assert_eq!(b.count_ones(), 4);
     assert_eq!(b.count_zeros(), 20);
 }
+
+#[test]
+fn test_reverse() {
+    let b = Bits::from_bin("11110000").unwrap();
+    let bp = b.reverse();
+    assert_eq!(bp.to_bin(), "00001111");
+    let b = Bits::from_bin("1").unwrap();
+    let bp = b.reverse();
+    assert_eq!(bp.to_bin(), "1");
+    let empty = Bits::from_bin("").unwrap();
+    let empty_p = empty.reverse();
+    assert_eq!(empty_p.to_bin(), "");
+    let b = Bits::from_bin("11001").unwrap();
+    let bp = b.reverse();
+    assert_eq!(bp.to_bin(), "10011");
+}

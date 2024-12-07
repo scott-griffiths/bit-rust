@@ -285,6 +285,21 @@ impl Bits {
     pub fn count_zeros(&self) -> u64 {
         self.count(false)
     }
+    
+    pub fn reverse(&self) -> Self {
+        let mut data: Vec<u8> = Vec::new();
+        let clipped = self.copy_with_new_offset(0);
+        for byte in clipped.data.iter().rev() {
+            data.push(byte.reverse_bits());
+        }
+        let final_bits = (self.offset + self.length) % 8;
+        let new_offset = if final_bits == 0 { 0 } else { 8 - final_bits };
+        Bits {
+            data: Arc::new(data),
+            offset: new_offset,
+            length: self.length,
+        }
+    }
 
     fn copy_with_new_offset(&self, offset: u64) -> Self {
         // Create a new Bits object with the same data but a different offset.
@@ -302,7 +317,7 @@ impl Bits {
             // No bit shifts to do.
             if offset < 8 {
                 return Bits {
-                    data: self.data.clone(),
+                    data: Arc::clone(&self.data),
                     offset: self.offset,
                     length: self.length,
                 };
