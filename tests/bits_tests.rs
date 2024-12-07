@@ -168,3 +168,11 @@ fn a_few_things() {
     assert_eq!(b3.to_hex().unwrap(), "abcdef6af37bd");
     // assert_eq!(b3.get_slice(Some(b1.get_length() + 2), Some(b3.get_length() - 2)).unwrap().to_hex().unwrap(), "abcdef");
 }
+
+#[test]
+fn test_count() {
+    let x = vec![1, 2, 3];
+    let b = Bits::from_bytes(x);
+    assert_eq!(b.count_ones(), 4);
+    assert_eq!(b.count_zeros(), 20);
+}

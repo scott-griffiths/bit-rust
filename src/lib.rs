@@ -265,6 +265,26 @@ impl Bits {
             length,
         }
     }
+    
+    fn count(&self, count_ones: bool) -> u64 {
+        let mut count: u64 = 0;
+        let clipped = self.copy_with_new_offset(0);
+        for byte in clipped.data.iter() {
+            count += byte.count_ones() as u64;
+        }
+        if !count_ones {
+            return self.length - count;
+        }
+        count
+    }
+    
+    pub fn count_ones(&self) -> u64 {
+        self.count(true)
+    }
+    
+    pub fn count_zeros(&self) -> u64 {
+        self.count(false)
+    }
 
     fn copy_with_new_offset(&self, offset: u64) -> Self {
         // Create a new Bits object with the same data but a different offset.
