@@ -91,29 +91,21 @@ impl Bits {
         })
     }
 
+    /// Returns the bit offset to the data in the Bits object.
     pub fn offset(&self) -> u64 {
         self.offset
     }
 
+    /// Returns the length of the Bits object in bits.
     pub fn length(&self) -> u64 {
         self.length
     }
 
+    /// Returns a reference to the raw data in the Bits object.
+    /// Note that the offset and length values govern which part of this raw buffer is the actual
+    /// binary data.
     pub fn data(&self) -> &Vec<u8> {
         &self.data
-    }
-
-    fn from_bytes_with_offsets(data: Vec<u8>, offset: u64, padding: u64) -> Result<Self, BitsError> {
-        let bitlength = (data.len() as u64) * 8;
-        if bitlength < offset + padding {
-            return Err(BitsError::OutOfBounds(offset + padding, bitlength));
-        }
-        let length: u64 = bitlength - offset - padding;
-        Ok(Bits {
-            data: Rc::new(data),
-            offset,
-            length,
-        })
     }
 
     pub fn get_index(&self, bit_index: u64) -> Result<bool, BitsError> {
@@ -154,23 +146,30 @@ impl Bits {
     }
 
     pub fn from_hex(hex: &str) -> Result<Self, BitsError> {
-        let mut hex = hex.to_string();
+        let mut new_hex = hex.to_string();
         let is_odd_length: bool = hex.len() % 2 != 0;
         if is_odd_length {
-            hex.push('0');
+            new_hex.push('0');
         }
-        let data = match hex::decode(hex) {
+        let data = match hex::decode(new_hex) {
             Ok(d) => d,
             Err(e) => return Err(BitsError::HexDecodeError(e)),
         };
-        let padding = if is_odd_length { 4 } else { 0 };
-        Bits::from_bytes_with_offsets(data, 0, padding)
+        Ok(Bits {
+            data: Rc::new(data),
+            offset: 0,
+            length: hex.len() as u64 * 4,
+        })
+
     }
 
     pub fn from_bin(bin: &str) -> Result<Self, BitsError> {
         let data = Bits::binary_string_to_vec_u8(bin)?;
-        let padding = (8 - ((bin.len() as u64) % 8)) % 8;
-        Bits::from_bytes_with_offsets(data, 0, padding)
+        Ok(Bits {
+            data: Rc::new(data),
+            offset: 0,
+            length: bin.len() as u64,
+        })
     }
 
     pub fn to_bin(&self) -> String {
@@ -187,10 +186,9 @@ impl Bits {
         if self.length % 4 != 0 {
             return Err(BitsError::InvalidLength(self.length));
         }
-        let (byte_start, bit_offset) = (self.offset / 8, self.offset % 8);
-        let byte_end = (self.offset + self.length + 7) / 8;
+        let bit_offset = self.offset % 8;
         let nibble_offset_data: &Vec<u8> = if bit_offset == 0 || bit_offset == 4 {
-            &self.data[byte_start as usize..byte_end as usize].to_vec()
+            &self.data[self.start_byte()..self.end_byte()].to_vec()
         } else {
             &self.copy_with_new_offset(0).data
         };
@@ -297,10 +295,12 @@ impl Bits {
         }
     }
 
+    /// Returns the byte index of the start of the binary data.
     fn start_byte(&self) -> usize {
         (self.offset / 8) as usize
     }
 
+    /// Returns the byte index of the end of the binary data.
     fn end_byte(&self) -> usize {
         ((self.offset + self.length + 7) / 8) as usize
     }
@@ -339,18 +339,8 @@ impl Bits {
                 };
             }
             else {
-                if ((offset + self.length + 7) / 8) as usize > self.data.len() {
-                    debug_assert!(false); // This shouldn't happen, but just return empty Bits.
-                    return Bits {
-                        data: Rc::new(vec![]),
-                        offset: 0,
-                        length: 0,
-                    };
-                }
-                let start_byte = (offset / 8) as usize;
-                let end_byte = ((offset + self.length + 7) / 8) as usize;
                 return Bits {
-                    data: Rc::new(self.data[start_byte..end_byte].to_vec()),
+                    data: Rc::new(self.data[self.start_byte()..self.end_byte()].to_vec()),
                     offset: offset % 8,
                     length: self.length,
                 };
