@@ -1,13 +1,13 @@
 use std::fmt;
 use std::fmt::Debug;
-use std::sync::Arc;
+use std::rc::Rc;
 
 /// Bits is a struct that holds an arbitrary amount of binary data. The data is stored
 /// in a Vec<u8> but does not need to be a multiple of 8 bits. A bit offset and a bit length
 /// are stored.
 #[derive(Debug)]
 pub struct Bits {
-    data: Arc<Vec<u8>>,
+    data: Rc<Vec<u8>>,
     offset: u64,
     length: u64,
 }
@@ -44,7 +44,7 @@ impl From<hex::FromHexError> for BitsError {
 impl Clone for Bits {
     fn clone(&self) -> Self {
         Bits {
-            data: Arc::clone(&self.data),
+            data: Rc::clone(&self.data),
             offset: self.offset,
             length: self.length,
         }
@@ -77,7 +77,7 @@ impl Bits {
         }
         if offset < 8 && (offset + length + 7) / 8 == data.len() as u64 {
             return Ok(Bits {
-                data: Arc::new(data),
+                data: Rc::new(data),
                 offset,
                 length,
             });
@@ -85,7 +85,7 @@ impl Bits {
         let start_byte = (offset / 8) as usize;
         let end_byte = ((offset + length + 7) / 8) as usize;
         Ok(Bits {
-            data: Arc::new(data[start_byte..end_byte].to_vec()),
+            data: Rc::new(data[start_byte..end_byte].to_vec()),
             offset: offset % 8,
             length,
         })
@@ -110,7 +110,7 @@ impl Bits {
         }
         let length: u64 = bitlength - offset - padding;
         Ok(Bits {
-            data: Arc::new(data),
+            data: Rc::new(data),
             offset,
             length,
         })
@@ -137,7 +137,7 @@ impl Bits {
         debug_assert!(end_bit >= start_bit);
         let new_length = end_bit - start_bit;
         let x = Bits {
-            data: Arc::clone(&self.data),
+            data: Rc::clone(&self.data),
             offset: start_bit + self.offset,
             length: new_length,
         };
@@ -147,7 +147,7 @@ impl Bits {
     pub fn from_bytes(data: Vec<u8>) -> Self {
         let bitlength = (data.len() as u64) * 8;
         Bits {
-            data: Arc::new(data),
+            data: Rc::new(data),
             offset: 0,
             length: bitlength,
         }
@@ -215,7 +215,7 @@ impl Bits {
 
     pub fn from_zeros(length: u64) -> Self {
         Bits {
-            data: Arc::new(vec![0; ((length + 7) / 8) as usize]),
+            data: Rc::new(vec![0; ((length + 7) / 8) as usize]),
             offset: 0,
             length,
         }
@@ -223,7 +223,7 @@ impl Bits {
 
     pub fn from_ones(length: u64) -> Self {
         Bits {
-            data: Arc::new(vec![0xff; ((length + 7) / 8) as usize]),
+            data: Rc::new(vec![0xff; ((length + 7) / 8) as usize]),
             offset: 0,
             length,
         }
@@ -260,12 +260,12 @@ impl Bits {
             length += bits.length;
         }
         Bits {
-            data: Arc::new(data),
+            data: Rc::new(data),
             offset,
             length,
         }
     }
-    
+
     fn count(&self) -> u64 {
         let mut count: u64 = 0;
         let clipped = self.copy_with_new_offset(0);
@@ -274,15 +274,15 @@ impl Bits {
         }
         count
     }
-    
+
     pub fn count_ones(&self) -> u64 {
         self.count()
     }
-    
+
     pub fn count_zeros(&self) -> u64 {
         self.length - self.count()
     }
-    
+
     pub fn reverse(&self) -> Self {
         let mut data: Vec<u8> = Vec::new();
         for byte in self.data[self.start_byte()..self.end_byte()].iter() {
@@ -291,28 +291,28 @@ impl Bits {
         let final_bits = (self.offset + self.length) % 8;
         let new_offset = if final_bits == 0 { 0 } else { 8 - final_bits };
         Bits {
-            data: Arc::new(data),
+            data: Rc::new(data),
             offset: new_offset,
             length: self.length,
         }
     }
-    
+
     fn start_byte(&self) -> usize {
         (self.offset / 8) as usize
     }
-    
+
     fn end_byte(&self) -> usize {
         ((self.offset + self.length + 7) / 8) as usize
     }
-    
+
     pub fn invert(&self) -> Self {
         let mut data: Vec<u8> = Vec::new();
         for byte in self.data[self.start_byte()..self.end_byte()].iter() {
             data.push(byte ^ 0xff);
         }
         Bits {
-            data: Arc::new(data),
-            offset: self.offset, 
+            data: Rc::new(data),
+            offset: self.offset,
             length: self.length,
         }
     }
@@ -324,7 +324,7 @@ impl Bits {
             debug_assert_eq!(self.length, 0);
             debug_assert_eq!(offset, 0);
             return Bits {
-                data: Arc::new(vec![]),
+                data: Rc::new(vec![]),
                 offset: 0,
                 length: 0,
             };
@@ -333,7 +333,7 @@ impl Bits {
             // No bit shifts to do.
             if offset < 8 {
                 return Bits {
-                    data: Arc::clone(&self.data),
+                    data: Rc::clone(&self.data),
                     offset: self.offset,
                     length: self.length,
                 };
@@ -342,7 +342,7 @@ impl Bits {
                 if ((offset + self.length + 7) / 8) as usize > self.data.len() {
                     debug_assert!(false); // This shouldn't happen, but just return empty Bits.
                     return Bits {
-                        data: Arc::new(vec![]),
+                        data: Rc::new(vec![]),
                         offset: 0,
                         length: 0,
                     };
@@ -350,7 +350,7 @@ impl Bits {
                 let start_byte = (offset / 8) as usize;
                 let end_byte = ((offset + self.length + 7) / 8) as usize;
                 return Bits {
-                    data: Arc::new(self.data[start_byte..end_byte].to_vec()),
+                    data: Rc::new(self.data[start_byte..end_byte].to_vec()),
                     offset: offset % 8,
                     length: self.length,
                 };
@@ -363,7 +363,7 @@ impl Bits {
             if self.data.len() == 1 {
                 new_data[0] = self.data[0] << left_shift;
                 return Bits {
-                    data: Arc::new(new_data),
+                    data: Rc::new(new_data),
                     offset,
                     length: self.length,
                 };
@@ -382,7 +382,7 @@ impl Bits {
                 new_data[new_byte_length - 1] += self.data[self.data.len() - 1] >> (8 - left_shift);
             }
             Bits {
-                data: Arc::new(new_data),
+                data: Rc::new(new_data),
                 offset,
                 length: self.length,
             }
@@ -399,7 +399,7 @@ impl Bits {
                 new_data[new_byte_length - 1] = self.data[self.data.len() - 1] << (8 - right_shift);
             }
             Bits {
-                data: Arc::new(new_data),
+                data: Rc::new(new_data),
                 offset,
                 length: self.length,
             }
