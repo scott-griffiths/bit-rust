@@ -163,12 +163,24 @@ impl Bits {
 
     }
 
-    pub fn from_bin(bin: &str) -> Result<Self, BitsError> {
-        let data = Bits::binary_string_to_vec_u8(bin)?;
+    pub fn from_bin(binary_string: &str) -> Result<Self, BitsError> {
+        let mut data: Vec<u8> = Vec::new();
+        let mut byte: u8 = 0;
+        for chunk in binary_string.as_bytes().chunks(8) {
+            for (i, &c) in chunk.iter().enumerate() {
+                if c == b'1' {
+                    byte |= 1 << (7 - i);
+                } else if c != b'0' {
+                    return Err(BitsError::InvalidCharacter(c as char));
+                }
+            }
+            data.push(byte);
+            byte = 0;
+        }
         Ok(Bits {
             data: Rc::new(data),
             offset: 0,
-            length: bin.len() as u64,
+            length: binary_string.len() as u64,
         })
     }
 
@@ -395,51 +407,13 @@ impl Bits {
             }
         }
     }
-
-    fn binary_string_to_vec_u8(binary_string: &str) -> Result<Vec<u8>, BitsError> {
-        let mut data: Vec<u8> = Vec::new();
-        let mut byte: u8 = 0;
-        let mut bit_count = 0;
-        for c in binary_string.chars() {
-            if c == '1' {
-                byte |= 1 << (7 - bit_count);
-            }
-            else if c != '0' {
-                return Err(BitsError::InvalidCharacter(c));
-            }
-            bit_count += 1;
-            if bit_count == 8 {
-                data.push(byte);
-                byte = 0;
-                bit_count = 0;
-            }
-        }
-        if bit_count != 0 {
-            data.push(byte);
-        }
-        Ok(data)
-    }
 }
 
 // Tests for internal methods only here.
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn binary_string_to_vec_u8() {
-        let mut data = Bits::binary_string_to_vec_u8("00001010").unwrap();
-        assert_eq!(data, vec![10]);
-        data = Bits::binary_string_to_vec_u8("").unwrap();
-        assert_eq!(data, vec![]);
-    }
-
-    #[test]
-    fn binary_string_to_vec_errors() {
-        let data = Bits::binary_string_to_vec_u8("hello");
-        assert!(data.is_err());
-    }
-
+    
     #[test]
     fn copy_with_new_offset() {
         let bits = Bits::from_bin("001100").unwrap();
