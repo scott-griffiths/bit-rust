@@ -1,4 +1,4 @@
-use bit_rust::Bits;
+use bit_rust::bits::Bits;
 
 #[test]
 fn new1() {
@@ -208,4 +208,14 @@ fn test_invert() {
     let temp = long.invert();
     assert_eq!(long.length(), temp.length());
     assert_eq!(temp.invert(), long);
+}
+
+#[test]
+fn test_join_again() {
+    let b1 = Bits::from_hex("0123456789").unwrap();
+    let b2 = b1.get_slice(Some(12), Some(24)).unwrap();
+    let b3 = Bits::join(&vec![&b2, &b2]);
+    assert_eq!(b3.to_hex().unwrap(), "345345");
+    let b3 = Bits::join(&vec![&b2, &b2, &b1]);
+    assert_eq!(b3.to_hex().unwrap(), "3453450123456789");
 }
