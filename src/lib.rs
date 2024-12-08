@@ -61,6 +61,7 @@ impl PartialEq for Bits {
         } else {
             other
         };
+        // TODO: This isn't good enough for bits at start and end.
         for i in 0..self.data.len() {
             if self.data[i] != other_offset.data[i] {
                 return false;
@@ -106,6 +107,11 @@ impl Bits {
     /// binary data.
     pub fn data(&self) -> &Vec<u8> {
         &self.data
+    }
+    
+    /// Return a copy of the bytes that are in use for the Bits object.
+    fn used_bytes_copy(&self) -> Vec<u8> {
+        self.data[self.start_byte()..self.end_byte()].to_vec()
     }
 
     pub fn get_index(&self, bit_index: u64) -> Result<bool, BitsError> {
@@ -246,18 +252,18 @@ impl Bits {
         if bits_vec.len() == 1 {
             return bits_vec[0].clone();
         }
-        let mut data = (*bits_vec[0].data).clone();
-        let offset: u64 = bits_vec[0].offset;
-        let mut length: u64 = bits_vec[0].length;
+        let mut data = (*bits_vec[0]).used_bytes_copy();
+        let new_offset: u64 = bits_vec[0].offset % 8;
+        let mut new_length: u64 = bits_vec[0].length;
         // Go though the vec of Bits and set the offset of each to the number of bits in the final byte of the previous one
         for bits in &bits_vec[1..] {
             if bits.length == 0 {
                 continue;
             }
-            let extra_bits = (length + offset) % 8;
+            let extra_bits = (new_length + new_offset) % 8;
             let offset_bits = bits.copy_with_new_offset(extra_bits);
             if extra_bits == 0 {
-                data.extend((*offset_bits.data).clone());
+                data.extend(offset_bits.used_bytes_copy());
             }
             else {
                 // Combine last byte of data with first byte of offset_bits.data.
@@ -267,12 +273,12 @@ impl Bits {
                 data.push(last_byte + first_byte);
                 data.extend(&offset_bits.data[1..]);
             }
-            length += bits.length;
+            new_length += bits.length;
         }
         Bits {
             data: Rc::new(data),
-            offset,
-            length,
+            offset: new_offset,
+            length: new_length,
         }
     }
 
@@ -329,84 +335,57 @@ impl Bits {
         }
     }
 
-    fn copy_with_new_offset(&self, offset: u64) -> Self {
-        // Create a new Bits object with the same data but a different offset.
+    fn copy_with_new_offset(&self, new_offset: u64) -> Self {
+        assert!(new_offset < 8);
+        // Create a new Bits object with the same value but a different offset.
         // Each byte will in general have to be bit shifted to the left or right.
-        if self.data.len() == 0 {
-            debug_assert_eq!(self.length, 0);
-            debug_assert_eq!(offset, 0);
+        if self.length == 0 {
             return Bits {
                 data: Rc::new(vec![]),
                 offset: 0,
                 length: 0,
-            };
-        }
-        if offset % 8 == self.offset % 8 {
-            // No bit shifts to do.
-            if offset < 8 {
-                return Bits {
-                    data: Rc::clone(&self.data),
-                    offset: self.offset,
-                    length: self.length,
-                };
-            }
-            else {
-                return Bits {
-                    data: Rc::new(self.data[self.start_byte()..self.end_byte()].to_vec()),
-                    offset: offset % 8,
-                    length: self.length,
-                };
             }
         }
-        let new_byte_length = ((self.length + offset + 7) / 8) as usize;
-        let mut new_data: Vec<u8> = vec![0; new_byte_length];
-        if offset < self.offset {
-            let left_shift: u64 = self.offset - offset;
-            if self.data.len() == 1 {
-                new_data[0] = self.data[0] << left_shift;
-                return Bits {
-                    data: Rc::new(new_data),
-                    offset,
-                    length: self.length,
-                };
-            }
-            assert!(self.data.len() > 1);
-            for i in 0..new_byte_length - 1 {
-                new_data[i] = (self.data[i] << left_shift) + (self.data[i + 1] >> (8 - left_shift));
-            }
-            // Do final byte of new_data.
-            if new_byte_length == self.data.len() {
-                new_data[new_byte_length - 1] = self.data[self.data.len() - 1] << left_shift;
-            }
-            else {
-                debug_assert_eq!(new_byte_length, self.data.len() - 1);
-                new_data[new_byte_length - 1] = self.data[self.data.len() - 2] << left_shift;
-                new_data[new_byte_length - 1] += self.data[self.data.len() - 1] >> (8 - left_shift);
-            }
-            Bits {
-                data: Rc::new(new_data),
-                offset,
+        let byte_offset = (self.offset / 8) as usize;
+        let bit_offset = self.offset % 8;
+        if new_offset == bit_offset {
+            return Bits {
+                data: Rc::new(self.data[self.start_byte()..self.end_byte()].to_vec()),
+                offset: new_offset,
                 length: self.length,
             }
+        }
+        let old_byte_length = ((self.length + self.offset + 7)/ 8) as usize;
+        let new_byte_length = ((self.length + new_offset + 7) / 8) as usize;
+        let mut new_data: Vec<u8> = vec![0; new_byte_length];
+        if new_offset < bit_offset {
+            let left_shift = bit_offset - new_offset;
+            debug_assert!(left_shift < 8);
+            // Do everything up to the final byte
+            for i in 0..new_byte_length - 1 {
+                new_data[i] = (self.data[i + byte_offset] << left_shift) + (self.data[i + 1 + byte_offset] >> (8 - left_shift));
+            }
+            // The final byte
+            new_data[new_byte_length - 1] = self.data[byte_offset + new_byte_length - 1] << left_shift;
         }
         else {
-            let right_shift: u64 = offset - self.offset;
+            let right_shift: u64 = new_offset - bit_offset;
+            debug_assert!(right_shift < 8);
             new_data[0] = self.data[0] >> right_shift;
-            if self.data.len() > 1 {
-                for i in 1..self.data.len() {
-                    new_data[i] = (self.data[i] >> right_shift) + (self.data[i - 1] << (8 - right_shift));
-                }
+            for i in 1..old_byte_length {
+                new_data[i] = (self.data[i + byte_offset] >> right_shift) + (self.data[i + byte_offset - 1] << (8 - right_shift));
             }
-            if new_byte_length > self.data.len() {
-                new_data[new_byte_length - 1] = self.data[self.data.len() - 1] << (8 - right_shift);
-            }
-            Bits {
-                data: Rc::new(new_data),
-                offset,
-                length: self.length,
+            if new_byte_length > old_byte_length {
+                new_data[new_byte_length - 1] = self.data[byte_offset + old_byte_length - 1] << (8 - right_shift);
             }
         }
+        Bits {
+            data: Rc::new(new_data),
+            offset: new_offset,
+            length: self.length,
+        }
     }
+    
 }
 
 // Tests for internal methods only here.
