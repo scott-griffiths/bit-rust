@@ -1,14 +1,35 @@
+use std::fmt;
 use std::rc::Rc;
 use crate::BitsError;
 
 /// Bits is a struct that holds an arbitrary amount of binary data. The data is stored
 /// in a Vec<u8> but does not need to be a multiple of 8 bits. A bit offset and a bit length
 /// are stored.
-#[derive(Debug)]
 pub struct Bits {
     data: Rc<Vec<u8>>,
     offset: u64,
     length: u64,
+}
+
+impl fmt::Debug for Bits {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.length > 100 {
+            return f.debug_struct("Bits")
+                .field("hex", &self.get_slice(0, 100).to_hex().unwrap())
+                .field("length", &self.length)
+                .finish();
+        }
+        if self.length % 4 == 0 {
+            return f.debug_struct("Bits")
+                .field("hex", &self.to_hex().unwrap())
+                .field("length", &self.length)
+                .finish();
+        }
+        f.debug_struct("Bits")
+            .field("bin", &self.to_bin())
+            .field("length", &self.length)
+            .finish()
+    }
 }
 
 impl Clone for Bits {
@@ -26,18 +47,7 @@ impl PartialEq for Bits {
         if self.length != other.length {
             return false;
         }
-        let other_offset: &Bits = if other.offset != self.offset {
-            &other.copy_with_new_offset(self.offset)
-        } else {
-            other
-        };
-        // TODO: This isn't good enough for bits at start and end.
-        for i in 0..self.data.len() {
-            if self.data[i] != other_offset.data[i] {
-                return false;
-            }
-        }
-        true
+        self.to_bin() == other.to_bin()
     }
 }
 
@@ -93,23 +103,15 @@ impl Bits {
         Ok(byte & (128 >> (p % 8)) != 0)
     }
 
-    pub fn get_slice(&self, start_bit: Option<u64>, end_bit: Option<u64>) -> Result<Self, BitsError> {
-        let start_bit = start_bit.unwrap_or_else(|| 0);
-        let end_bit = end_bit.unwrap_or_else(|| self.length);
-        if start_bit > end_bit {
-            return Err(BitsError::Error(format!("start_bit is greater than end_bit: {} > {}.", start_bit, end_bit)));
-        }
-        if end_bit > self.length {
-            return Err(BitsError::OutOfBounds(end_bit, self.length));
-        }
-        debug_assert!(end_bit >= start_bit);
+    pub fn get_slice(&self, start_bit: u64, end_bit: u64) -> Self {
+        assert!(start_bit <= end_bit);
+        assert!(end_bit <= self.length);
         let new_length = end_bit - start_bit;
-        let x = Bits {
+        Bits {
             data: Rc::clone(&self.data),
             offset: start_bit + self.offset,
             length: new_length,
-        };
-        Ok(x)
+        }
     }
 
     pub fn from_bytes(data: Vec<u8>) -> Self {
@@ -163,9 +165,9 @@ impl Bits {
     pub fn to_bin(&self) -> String {
         let x = self.data.iter()
             .map(|byte| format!("{:08b}", byte))
-            .fold(String::new(), |mut acc, bin| {
-                acc.push_str(&bin);
-                acc
+            .fold(String::new(), |mut bin_str, bin| {
+                bin_str.push_str(&bin);
+                bin_str
             });
         x[self.offset as usize..(self.offset + self.length) as usize].to_string()
     }
@@ -251,6 +253,18 @@ impl Bits {
             length: new_length,
         }
     }
+    
+    pub fn find(&self, b: &Bits, startbit: u64) -> Option<u64> {
+        if b.length + startbit > self.length {
+            return None;
+        }
+        for sb in startbit..self.length - b.length {
+            if self.get_slice(sb, sb + b.length) == *b {
+                return Some(sb);
+            }
+        }
+        None
+    }
 
     fn count(&self) -> u64 {
         let mut count: u64 = 0;
@@ -305,6 +319,7 @@ impl Bits {
         }
     }
 
+    // Return copy with a new offset (< 8). Any excess bytes will be trimmed.
     fn copy_with_new_offset(&self, new_offset: u64) -> Self {
         assert!(new_offset < 8);
         // Create a new Bits object with the same value but a different offset.

@@ -142,7 +142,7 @@ fn join_single_bits() {
 #[test]
 fn hex_edge_cases() {
     let b1 = Bits::from_hex("0123456789abcdef").unwrap();
-    let b2 = b1.get_slice(Some(12), None).unwrap();
+    let b2 = b1.get_slice(12, b1.length());
     assert_eq!(b2.to_hex().unwrap(), "3456789abcdef");
 
     let b2 = Bits::new(vec![0x01, 0x23, 0x45, 0x67], 12, 12).unwrap();
@@ -213,9 +213,19 @@ fn test_invert() {
 #[test]
 fn test_join_again() {
     let b1 = Bits::from_hex("0123456789").unwrap();
-    let b2 = b1.get_slice(Some(12), Some(24)).unwrap();
+    let b2 = b1.get_slice(12, 24);
     let b3 = Bits::join(&vec![&b2, &b2]);
     assert_eq!(b3.to_hex().unwrap(), "345345");
     let b3 = Bits::join(&vec![&b2, &b2, &b1]);
     assert_eq!(b3.to_hex().unwrap(), "3453450123456789");
+}
+
+#[test]
+fn test_find() {
+    let b1 = Bits::from_zeros(10);
+    let b2 = Bits::from_ones(2);
+    assert_eq!(b1.find(&b2, 0), None);
+    let b3 = Bits::from_bin("00001110").unwrap();
+    let b4 = Bits::from_bin("01").unwrap();
+    assert_eq!(b3.find(&b4, 0), Some(3));
 }
