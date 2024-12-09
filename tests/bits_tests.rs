@@ -100,14 +100,14 @@ fn from_ones() {
 #[test]
 fn get_index() {
     let bits = Bits::from_bin("001100").unwrap();
-    assert_eq!(bits.get_index(0).unwrap(), false);
-    assert_eq!(bits.get_index(1).unwrap(), false);
-    assert_eq!(bits.get_index(2).unwrap(), true);
-    assert_eq!(bits.get_index(3).unwrap(), true);
-    assert_eq!(bits.get_index(4).unwrap(), false);
-    assert_eq!(bits.get_index(5).unwrap(), false);
-    assert!(bits.get_index(6).is_err());
-    assert!(bits.get_index(60).is_err());
+    assert_eq!(bits.index(0).unwrap(), false);
+    assert_eq!(bits.index(1).unwrap(), false);
+    assert_eq!(bits.index(2).unwrap(), true);
+    assert_eq!(bits.index(3).unwrap(), true);
+    assert_eq!(bits.index(4).unwrap(), false);
+    assert_eq!(bits.index(5).unwrap(), false);
+    assert!(bits.index(6).is_err());
+    assert!(bits.index(60).is_err());
 }
 
 #[test]
@@ -142,8 +142,16 @@ fn join_single_bits() {
 #[test]
 fn hex_edge_cases() {
     let b1 = Bits::from_hex("0123456789abcdef").unwrap();
-    let b2 = b1.get_slice(12, b1.length());
+    let b2 = b1.slice(12, b1.length());
     assert_eq!(b2.to_hex().unwrap(), "3456789abcdef");
+    assert_eq!(b2.offset(), 12);
+    assert_eq!(b2.length(), 52);
+    assert_eq!(b2.data().len(), 8);
+    let bp = b2.trim();
+    assert_eq!(bp, b2);
+    assert_eq!(bp.offset(), 4);
+    assert_eq!(bp.length(), 52);
+    assert_eq!(bp.data().len(), 7);
 
     let b2 = Bits::new(vec![0x01, 0x23, 0x45, 0x67], 12, 12).unwrap();
     assert_eq!(b2.to_hex().unwrap(), "345");
@@ -153,7 +161,7 @@ fn hex_edge_cases() {
 fn a_few_things() {
     let b1 = Bits::from_hex("abcdef").unwrap();
     let b2 = Bits::from_bin("01").unwrap();
-    let b4 = Bits::join(&vec![&b1, &b2]);
+    let b4 = Bits::join(&vec![&b1, &b2]).trim();
     assert_eq!(b4.length(), 26);
     assert_eq!(b4.to_bin(), "10101011110011011110111101");
     let b5 = Bits::join(&vec![&b1, &b1]);
@@ -213,7 +221,7 @@ fn test_invert() {
 #[test]
 fn test_join_again() {
     let b1 = Bits::from_hex("0123456789").unwrap();
-    let b2 = b1.get_slice(12, 24);
+    let b2 = b1.slice(12, 24);
     let b3 = Bits::join(&vec![&b2, &b2]);
     assert_eq!(b3.to_hex().unwrap(), "345345");
     let b3 = Bits::join(&vec![&b2, &b2, &b1]);
@@ -224,8 +232,9 @@ fn test_join_again() {
 fn test_find() {
     let b1 = Bits::from_zeros(10);
     let b2 = Bits::from_ones(2);
-    assert_eq!(b1.find(&b2, 0), None);
+    assert_eq!(b1.find(&b2), None);
     let b3 = Bits::from_bin("00001110").unwrap();
     let b4 = Bits::from_bin("01").unwrap();
-    assert_eq!(b3.find(&b4, 0), Some(3));
+    assert_eq!(b3.find(&b4), Some(3));
+    assert_eq!(b3.slice(2, b3.length()).find(&b4), Some(1));
 }

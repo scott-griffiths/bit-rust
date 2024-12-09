@@ -15,7 +15,7 @@ impl fmt::Debug for Bits {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.length > 100 {
             return f.debug_struct("Bits")
-                .field("hex", &self.get_slice(0, 100).to_hex().unwrap())
+                .field("hex", &self.slice(0, 100).to_hex().unwrap())
                 .field("length", &self.length)
                 .finish();
         }
@@ -94,7 +94,7 @@ impl Bits {
         self.data[self.start_byte()..self.end_byte()].to_vec()
     }
 
-    pub fn get_index(&self, bit_index: u64) -> Result<bool, BitsError> {
+    pub fn index(&self, bit_index: u64) -> Result<bool, BitsError> {
         if bit_index >= self.length {
             return Err(BitsError::OutOfBounds(bit_index, self.length));
         }
@@ -103,7 +103,7 @@ impl Bits {
         Ok(byte & (128 >> (p % 8)) != 0)
     }
 
-    pub fn get_slice(&self, start_bit: u64, end_bit: u64) -> Self {
+    pub fn slice(&self, start_bit: u64, end_bit: u64) -> Self {
         assert!(start_bit <= end_bit);
         assert!(end_bit <= self.length);
         let new_length = end_bit - start_bit;
@@ -111,6 +111,22 @@ impl Bits {
             data: Rc::clone(&self.data),
             offset: start_bit + self.offset,
             length: new_length,
+        }
+    }
+    
+    // Return a new Bits with any excess stored bytes trimmed.
+    pub fn trim(&self) -> Self {
+        if self.offset < 8 && self.end_byte() == self.data.len() {
+            return Bits {
+                data: Rc::clone(&self.data),
+                offset: self.offset,
+                length: self.length,
+            }
+        }
+        Bits {
+            data: Rc::new(self.data[self.start_byte()..self.end_byte()].to_vec()),
+            offset: self.offset % 8,
+            length: self.length,
         }
     }
 
@@ -253,13 +269,25 @@ impl Bits {
             length: new_length,
         }
     }
-    
-    pub fn find(&self, b: &Bits, startbit: u64) -> Option<u64> {
-        if b.length + startbit > self.length {
+
+    pub fn find(&self, b: &Bits) -> Option<u64> {
+        if b.length > self.length {
             return None;
         }
-        for sb in startbit..self.length - b.length {
-            if self.get_slice(sb, sb + b.length) == *b {
+        for sb in 0..self.length - b.length {
+            if self.slice(sb, sb + b.length) == *b {
+                return Some(sb);
+            }
+        }
+        None
+    }
+
+    pub fn find_aligned(&self, b: &Bits, step: usize) -> Option<u64> {
+        if b.length > self.length {
+            return None;
+        }
+        for sb in (0..self.length - b.length).step_by(step) {
+            if self.slice(sb, sb + b.length) == *b {
                 return Some(sb);
             }
         }
