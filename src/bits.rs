@@ -89,11 +89,6 @@ impl Bits {
         &self.data
     }
 
-    /// Return a copy of the bytes that are in use for the Bits object.
-    fn used_bytes_copy(&self) -> Vec<u8> {
-        self.data[self.start_byte()..self.end_byte()].to_vec()
-    }
-
     pub fn index(&self, bit_index: u64) -> Result<bool, BitsError> {
         if bit_index >= self.length {
             return Err(BitsError::OutOfBounds(bit_index, self.length));
@@ -113,7 +108,7 @@ impl Bits {
             length: new_length,
         }
     }
-    
+
     // Return a new Bits with any excess stored bytes trimmed.
     pub fn trim(&self) -> Self {
         if self.offset < 8 && self.end_byte() == self.data.len() {
@@ -240,7 +235,7 @@ impl Bits {
         if bits_vec.len() == 1 {
             return bits_vec[0].clone();
         }
-        let mut data = (*bits_vec[0]).used_bytes_copy();
+        let mut data = bits_vec[0].data[bits_vec[0].start_byte()..bits_vec[0].end_byte()].to_vec();
         let new_offset: u64 = bits_vec[0].offset % 8;
         let mut new_length: u64 = bits_vec[0].length;
         // Go though the vec of Bits and set the offset of each to the number of bits in the final byte of the previous one
@@ -251,7 +246,7 @@ impl Bits {
             let extra_bits = (new_length + new_offset) % 8;
             let offset_bits = bits.copy_with_new_offset(extra_bits);
             if extra_bits == 0 {
-                data.extend(offset_bits.used_bytes_copy());
+                data.extend(offset_bits.data[offset_bits.start_byte()..offset_bits.end_byte()].to_vec());
             }
             else {
                 // Combine last byte of data with first byte of offset_bits.data.
