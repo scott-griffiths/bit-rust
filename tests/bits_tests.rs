@@ -238,3 +238,11 @@ fn test_find() {
     assert_eq!(b3.find(&b4), Some(3));
     assert_eq!(b3.slice(2, b3.length()).find(&b4), Some(1));
 }
+
+#[test]
+fn test_and() {
+    let a1 = Bits::from_hex("f0f").unwrap();
+    let a2 = Bits::from_hex("123").unwrap();
+    let a3 = a1.and(&a2).unwrap();
+    assert_eq!(a3, Bits::from_hex("103").unwrap());
+}

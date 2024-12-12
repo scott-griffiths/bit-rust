@@ -227,7 +227,36 @@ impl Bits {
             length,
         }
     }
-
+    
+    fn bitwise_op<F>(&self, other: &Bits, op: F) -> Result<Bits, BitsError>
+    where F: Fn(u8, u8) -> u8 {
+        if self.length != other.length {
+            return Err(BitsError::InvalidLength(other.length));
+        }
+        let other_offset = other.copy_with_new_offset(self.offset % 8);
+        let mut data: Vec<u8> = Vec::new();
+        for i in 0..other_offset.data.len() {
+            data.push(op(self.data[i + self.start_byte()], other.data[i]));
+        }
+        Ok(Bits {
+            data: Rc::new(data),
+            length: other.length,
+            offset: other.offset,
+        })
+    }
+    
+    pub fn or(&self, other: &Bits) -> Result<Bits, BitsError> {
+        self.bitwise_op(other, |a, b| a | b)
+    }
+    
+    pub fn xor(&self, other: &Bits) -> Result<Bits, BitsError> {
+        self.bitwise_op(other, |a, b| a ^ b)
+    }
+    
+    pub fn and(&self, other: &Bits) -> Result<Bits, BitsError> {
+        self.bitwise_op(other, |a, b| a & b)
+    }
+    
     pub fn join(bits_vec: &Vec<&Bits>) -> Bits {
         if bits_vec.len() == 0 {
             return Bits::from_zeros(0);
