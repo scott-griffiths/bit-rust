@@ -1,7 +1,12 @@
 [package]
-name = "bit-rust"
+name = "bit_rust"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+crate-type = ["cdylib"]
+name = "bit_rust"
+
 [dependencies]
 hex = "0.4.3"
+pyo3 = "0.23.3"

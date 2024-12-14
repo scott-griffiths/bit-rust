@@ -1,4 +1,4 @@
-use bit_rust::bits::Bits;
+use crate::bits::Bits;
 
 #[test]
 fn new1() {

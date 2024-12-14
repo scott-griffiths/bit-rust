@@ -2,7 +2,13 @@ pub mod bits;
 
 use std::fmt;
 use std::fmt::Debug;
+use pyo3::prelude::*;
 
+#[pymodule]
+fn bit_rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<bits::Bits>()?;
+    Ok(())
+}
 
 #[derive(Debug)]
 pub enum BitsError {
