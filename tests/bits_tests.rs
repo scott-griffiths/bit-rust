@@ -232,11 +232,11 @@ fn test_join_again() {
 fn test_find() {
     let b1 = Bits::from_zeros(10);
     let b2 = Bits::from_ones(2);
-    assert_eq!(b1.find(&b2), None);
+    assert_eq!(b1.find(&b2, false), None);
     let b3 = Bits::from_bin("00001110").unwrap();
     let b4 = Bits::from_bin("01").unwrap();
-    assert_eq!(b3.find(&b4), Some(3));
-    assert_eq!(b3.slice(2, b3.length()).find(&b4), Some(1));
+    assert_eq!(b3.find(&b4, false), Some(3));
+    assert_eq!(b3.slice(2, b3.length()).find(&b4, false), Some(1));
 }
 
 #[test]

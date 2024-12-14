@@ -72,56 +72,19 @@ impl Bits {
         })
     }
 
-    /// Returns the bit offset to the data in the Bits object.
-    pub fn offset(&self) -> u64 {
-        self.offset
-    }
-
-    /// Returns the length of the Bits object in bits.
-    pub fn length(&self) -> u64 {
-        self.length
-    }
-
-    /// Returns a reference to the raw data in the Bits object.
-    /// Note that the offset and length values govern which part of this raw buffer is the actual
-    /// binary data.
-    pub fn data(&self) -> &Vec<u8> {
-        &self.data
-    }
-
-    pub fn index(&self, bit_index: u64) -> Result<bool, BitsError> {
-        if bit_index >= self.length {
-            return Err(BitsError::OutOfBounds(bit_index, self.length));
-        }
-        let p: u64 = bit_index + self.offset;
-        let byte = self.data[(p / 8) as usize];
-        Ok(byte & (128 >> (p % 8)) != 0)
-    }
-
-    pub fn slice(&self, start_bit: u64, end_bit: u64) -> Self {
-        assert!(start_bit <= end_bit);
-        assert!(end_bit <= self.length);
-        let new_length = end_bit - start_bit;
+    pub fn from_zeros(length: u64) -> Self {
         Bits {
-            data: Rc::clone(&self.data),
-            offset: start_bit + self.offset,
-            length: new_length,
+            data: Rc::new(vec![0; ((length + 7) / 8) as usize]),
+            offset: 0,
+            length,
         }
     }
 
-    // Return a new Bits with any excess stored bytes trimmed.
-    pub fn trim(&self) -> Self {
-        if self.offset < 8 && self.end_byte() == self.data.len() {
-            return Bits {
-                data: Rc::clone(&self.data),
-                offset: self.offset,
-                length: self.length,
-            }
-        }
+    pub fn from_ones(length: u64) -> Self {
         Bits {
-            data: Rc::new(self.data[self.start_byte()..self.end_byte()].to_vec()),
-            offset: self.offset % 8,
-            length: self.length,
+            data: Rc::new(vec![0xff; ((length + 7) / 8) as usize]),
+            offset: 0,
+            length,
         }
     }
 
@@ -132,24 +95,6 @@ impl Bits {
             offset: 0,
             length: bitlength,
         }
-    }
-
-    pub fn from_hex(hex: &str) -> Result<Self, BitsError> {
-        let mut new_hex = hex.to_string();
-        let is_odd_length: bool = hex.len() % 2 != 0;
-        if is_odd_length {
-            new_hex.push('0');
-        }
-        let data = match hex::decode(new_hex) {
-            Ok(d) => d,
-            Err(e) => return Err(BitsError::HexDecodeError(e)),
-        };
-        Ok(Bits {
-            data: Rc::new(data),
-            offset: 0,
-            length: hex.len() as u64 * 4,
-        })
-
     }
 
     pub fn from_bin(binary_string: &str) -> Result<Self, BitsError> {
@@ -173,90 +118,31 @@ impl Bits {
         })
     }
 
-    pub fn to_bin(&self) -> String {
-        let x = self.data.iter()
-            .map(|byte| format!("{:08b}", byte))
-            .fold(String::new(), |mut bin_str, bin| {
-                bin_str.push_str(&bin);
-                bin_str
-            });
-        x[self.offset as usize..(self.offset + self.length) as usize].to_string()
-    }
-
-    pub fn to_hex(&self) -> Result<String, BitsError> {
-        if self.length % 4 != 0 {
-            return Err(BitsError::InvalidLength(self.length));
+    pub fn from_hex(hex: &str) -> Result<Self, BitsError> {
+        let mut new_hex = hex.to_string();
+        let is_odd_length: bool = hex.len() % 2 != 0;
+        if is_odd_length {
+            new_hex.push('0');
         }
-        let bit_offset = self.offset % 8;
-        let nibble_offset_data: &Vec<u8> = if bit_offset == 0 || bit_offset == 4 {
-            &self.data[self.start_byte()..self.end_byte()].to_vec()
-        } else {
-            &self.copy_with_new_offset(0).data
+        let data = match hex::decode(new_hex) {
+            Ok(d) => d,
+            Err(e) => return Err(BitsError::HexDecodeError(e)),
         };
-        let x = nibble_offset_data.iter()
-            .map(|byte| format!("{:02x}", byte))
-            .fold(String::new(), |mut acc, hex| {
-                acc.push_str(&hex);
-                acc
-            });
-        if bit_offset == 4 {
-            if self.length % 8 == 0 {
-                return Ok(x[1..x.len()-1].to_string());
-            }
-            return Ok(x[1..].to_string());
-        }
-        if self.length % 8 == 0 {
-            return Ok(x);
-        }
-        debug_assert_eq!(self.length % 8, 4);
-        Ok(x[..x.len()-1].to_string())
-    }
-
-    pub fn from_zeros(length: u64) -> Self {
-        Bits {
-            data: Rc::new(vec![0; ((length + 7) / 8) as usize]),
-            offset: 0,
-            length,
-        }
-    }
-
-    pub fn from_ones(length: u64) -> Self {
-        Bits {
-            data: Rc::new(vec![0xff; ((length + 7) / 8) as usize]),
-            offset: 0,
-            length,
-        }
-    }
-    
-    fn bitwise_op<F>(&self, other: &Bits, op: F) -> Result<Bits, BitsError>
-    where F: Fn(u8, u8) -> u8 {
-        if self.length != other.length {
-            return Err(BitsError::InvalidLength(other.length));
-        }
-        let other_offset = other.copy_with_new_offset(self.offset % 8);
-        let mut data: Vec<u8> = Vec::new();
-        for i in 0..other_offset.data.len() {
-            data.push(op(self.data[i + self.start_byte()], other.data[i]));
-        }
         Ok(Bits {
             data: Rc::new(data),
-            length: other.length,
-            offset: other.offset,
+            offset: 0,
+            length: hex.len() as u64 * 4,
         })
     }
+
+    // pub fn from_oct(oct: &str) -> Result<Self, BitsError> {
+    //     // TODO
+    // }
     
-    pub fn or(&self, other: &Bits) -> Result<Bits, BitsError> {
-        self.bitwise_op(other, |a, b| a | b)
-    }
-    
-    pub fn xor(&self, other: &Bits) -> Result<Bits, BitsError> {
-        self.bitwise_op(other, |a, b| a ^ b)
-    }
-    
-    pub fn and(&self, other: &Bits) -> Result<Bits, BitsError> {
-        self.bitwise_op(other, |a, b| a & b)
-    }
-    
+    // Don't need - rewrite Python to convery int to bytes
+    // pub fn from_int
+
+
     pub fn join(bits_vec: &Vec<&Bits>) -> Bits {
         if bits_vec.len() == 0 {
             return Bits::from_zeros(0);
@@ -293,23 +179,73 @@ impl Bits {
             length: new_length,
         }
     }
+    
+    // TODO
+    // pub fn to_bytes(&self) -> Vec<u8> {}
+    
+    // Don't need - rewrite Python to convert bytes to int
+    // pub fn to uint(&self) 
+    // pub fn to_int(&self)
 
-    pub fn find(&self, b: &Bits) -> Option<u64> {
-        if b.length > self.length {
-            return None;
+    pub fn to_hex(&self) -> Result<String, BitsError> {
+        if self.length % 4 != 0 {
+            return Err(BitsError::InvalidLength(self.length));
         }
-        for sb in 0..self.length - b.length {
-            if self.slice(sb, sb + b.length) == *b {
-                return Some(sb);
+        let bit_offset = self.offset % 8;
+        let nibble_offset_data: &Vec<u8> = if bit_offset == 0 || bit_offset == 4 {
+            &self.data[self.start_byte()..self.end_byte()].to_vec()
+        } else {
+            &self.copy_with_new_offset(0).data
+        };
+        let x = nibble_offset_data.iter()
+            .map(|byte| format!("{:02x}", byte))
+            .fold(String::new(), |mut acc, hex| {
+                acc.push_str(&hex);
+                acc
+            });
+        if bit_offset == 4 {
+            if self.length % 8 == 0 {
+                return Ok(x[1..x.len()-1].to_string());
             }
+            return Ok(x[1..].to_string());
         }
-        None
+        if self.length % 8 == 0 {
+            return Ok(x);
+        }
+        debug_assert_eq!(self.length % 8, 4);
+        Ok(x[..x.len()-1].to_string())
     }
 
-    pub fn find_aligned(&self, b: &Bits, step: usize) -> Option<u64> {
+    pub fn to_bin(&self) -> String {
+        let x = self.data.iter()
+            .map(|byte| format!("{:08b}", byte))
+            .fold(String::new(), |mut bin_str, bin| {
+                bin_str.push_str(&bin);
+                bin_str
+            });
+        x[self.offset as usize..(self.offset + self.length) as usize].to_string()
+    }
+    
+    // TODO
+    // pub fn to_oct(&self) -> Result<String, BitsError> {}
+    
+    pub fn or(&self, other: &Bits) -> Result<Bits, BitsError> {
+        self.bitwise_op(other, |a, b| a | b)
+    }
+
+    pub fn xor(&self, other: &Bits) -> Result<Bits, BitsError> {
+        self.bitwise_op(other, |a, b| a ^ b)
+    }
+
+    pub fn and(&self, other: &Bits) -> Result<Bits, BitsError> {
+        self.bitwise_op(other, |a, b| a & b)
+    }
+
+    pub fn find(&self, b: &Bits, bytealigned: bool) -> Option<u64> {
         if b.length > self.length {
             return None;
         }
+        let step = if bytealigned { 8 } else { 1 };
         for sb in (0..self.length - b.length).step_by(step) {
             if self.slice(sb, sb + b.length) == *b {
                 return Some(sb);
@@ -317,15 +253,11 @@ impl Bits {
         }
         None
     }
-
-    fn count(&self) -> u64 {
-        let mut count: u64 = 0;
-        let clipped = self.copy_with_new_offset(0);
-        for byte in clipped.data.iter() {
-            count += byte.count_ones() as u64;
-        }
-        count
-    }
+    
+    // TODO
+    // pub fn rfind(&self, b: &Bits, bytealigned: bool) -> Option<u64> {}
+    // pub fn find_all(&self, b: &Bits, bytealigned: bool) -> iter<u64> {}
+    // pub fn rfind_all(&self, b: &Bits, bytealigned: bool) -> iter<u64> {}
 
     pub fn count_ones(&self) -> u64 {
         self.count()
@@ -347,6 +279,89 @@ impl Bits {
             offset: new_offset,
             length: self.length,
         }
+    }
+    
+    // TODO
+    // pub fn iter(&self) -> iter<bool> {}
+
+    // TODO: rename to getindex ? 
+    pub fn index(&self, bit_index: u64) -> Result<bool, BitsError> {
+        if bit_index >= self.length {
+            return Err(BitsError::OutOfBounds(bit_index, self.length));
+        }
+        let p: u64 = bit_index + self.offset;
+        let byte = self.data[(p / 8) as usize];
+        Ok(byte & (128 >> (p % 8)) != 0)
+    }
+    
+    fn bitwise_op<F>(&self, other: &Bits, op: F) -> Result<Bits, BitsError>
+    where F: Fn(u8, u8) -> u8 {
+        if self.length != other.length {
+            return Err(BitsError::InvalidLength(other.length));
+        }
+        let other_offset = other.copy_with_new_offset(self.offset % 8);
+        let mut data: Vec<u8> = Vec::new();
+        for i in 0..other_offset.data.len() {
+            data.push(op(self.data[i + self.start_byte()], other.data[i]));
+        }
+        Ok(Bits {
+            data: Rc::new(data),
+            length: other.length,
+            offset: other.offset,
+        })
+    }
+    
+    /// Returns the bit offset to the data in the Bits object.
+    pub fn offset(&self) -> u64 {
+        self.offset
+    }
+
+    /// Returns the length of the Bits object in bits.
+    pub fn length(&self) -> u64 {
+        self.length
+    }
+
+    // Return a new Bits with any excess stored bytes trimmed.
+    pub fn trim(&self) -> Self {
+        if self.offset < 8 && self.end_byte() == self.data.len() {
+            return Bits {
+                data: Rc::clone(&self.data),
+                offset: self.offset,
+                length: self.length,
+            }
+        }
+        Bits {
+            data: Rc::new(self.data[self.start_byte()..self.end_byte()].to_vec()),
+            offset: self.offset % 8,
+            length: self.length,
+        }
+    }
+
+    /// Returns a reference to the raw data in the Bits object.
+    /// Note that the offset and length values govern which part of this raw buffer is the actual
+    /// binary data.
+    pub fn data(&self) -> &Vec<u8> {
+        &self.data
+    }
+
+    pub fn slice(&self, start_bit: u64, end_bit: u64) -> Self {
+        assert!(start_bit <= end_bit);
+        assert!(end_bit <= self.length);
+        let new_length = end_bit - start_bit;
+        Bits {
+            data: Rc::clone(&self.data),
+            offset: start_bit + self.offset,
+            length: new_length,
+        }
+    }
+
+    fn count(&self) -> u64 {
+        let mut count: u64 = 0;
+        let clipped = self.copy_with_new_offset(0);
+        for byte in clipped.data.iter() {
+            count += byte.count_ones() as u64;
+        }
+        count
     }
 
     /// Returns the byte index of the start of the binary data.
