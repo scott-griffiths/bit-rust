@@ -742,7 +742,7 @@ fn test_find() {
     assert_eq!(b3.slice(2, b3.length()).find(&b4, false), Some(1));
 }
 
-Add#[test]
+#[test]
 fn test_and() {
     let a1 = Bits::from_hex("f0f").unwrap();
     let a2 = Bits::from_hex("123").unwrap();
