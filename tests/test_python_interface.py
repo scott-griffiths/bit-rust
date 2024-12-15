@@ -1,5 +1,6 @@
 
 from bit_rust import Bits
+import pytest
 
 def test_creation():
     b = Bits.from_zeros(10)
@@ -27,3 +28,16 @@ def test_join():
     assert d.to_bin() == '11110000'
     e = c.and_(d)
     assert e.to_bin() == '00000000'
+
+def test_find():
+    a = Bits.from_bin('00000110001110')
+    b = Bits.from_bin('11')
+    assert a.find(b, False) == 5
+    assert a.find(b, True) is None
+
+def test_from_oct():
+    a = Bits.from_oct('776')
+    assert a.to_bin() == '111111110'
+    with pytest.raises(ValueError):
+        b = Bits.from_oct('abc')
+    assert a.to_oct() == "776"

@@ -156,6 +156,38 @@ impl Bits {
             length: new_length,
         }
     }
+
+    // Return a new Bits with any excess stored bytes trimmed.
+    pub fn trim(&self) -> Self {
+        if self.offset < 8 && self.end_byte() == self.data.len() {
+            return Bits {
+                data: Arc::clone(&self.data),
+                offset: self.offset,
+                length: self.length,
+            }
+        }
+        Bits {
+            data: Arc::new(self.data[self.start_byte()..self.end_byte()].to_vec()),
+            offset: self.offset % 8,
+            length: self.length,
+        }
+    }
+    // I think this works as a Rust version. Keeping this copy for reference.
+    pub fn find_all_rust<'a>(&'a self, b: &'a Bits, bytealigned: bool) -> impl Iterator<Item = u64> + 'a {
+        // Use the find fn to find all instances of b in self and return as an iterator
+        let mut start: u64 = 0;
+        std::iter::from_fn(move || {
+            let found = self.slice(start, self.length).find(b, bytealigned);
+            match found {
+                Some(x) => {
+                    start = x + 1;
+                    Some(x)
+                }
+                None => None,
+            }
+        })
+    }
+
 }
 
 #[pymethods]
@@ -229,9 +261,19 @@ impl Bits {
         })
     }
 
-    // pub fn from_oct(oct: &str) -> Result<Self, BitsError> {
-    //     // TODO
-    // }
+    #[staticmethod]
+    pub fn from_oct(oct: &str) -> PyResult<Self> {
+        let mut bin_str = String::new();
+        for ch in oct.chars() {
+            // Convert each ch to an integer
+            let digit = match ch.to_digit(8) {
+                Some(d) => d,
+                None => return Err(PyValueError::new_err("Invalid character")),
+            };
+            bin_str.push_str(&format!("{:03b}", digit)); // Format as 3-bit binary
+        }
+        Ok(Bits::from_bin(&bin_str).unwrap())
+    }
     
     // Don't need - rewrite Python to convert int to bytes
     // pub fn from_int
@@ -321,10 +363,21 @@ impl Bits {
             });
         x[self.offset as usize..(self.offset + self.length) as usize].to_string()
     }
-    
-    // TODO
-    // pub fn to_oct(&self) -> Result<String, BitsError> {}
-    
+
+    pub fn to_oct(&self) -> PyResult<String> {
+        if self.length % 3 != 0 {
+            return Err(PyValueError::new_err("Not a multiple of 3 bits long."));
+        }
+        let bin_str = self.to_bin();
+        let mut oct_str: String = String::new();
+
+        for chunk in bin_str.as_bytes().chunks(3) {
+            let binary_chunk = std::str::from_utf8(chunk).unwrap();
+            let value = u8::from_str_radix(binary_chunk, 2).unwrap();
+            oct_str.push(std::char::from_digit(value as u32, 8).unwrap());
+        }
+        Ok(oct_str)
+    }
 
     pub fn and_(&self, other: &Bits) -> PyResult<Bits> {
         match self.bitwise_op(other, |a, b| a & b) {
@@ -344,25 +397,33 @@ impl Bits {
             Err(_) => Err(PyValueError::new_err("Lengths do not match.")),
         }
     }
-
-    
     
     pub fn find(&self, b: &Bits, bytealigned: bool) -> Option<u64> {
         if b.length > self.length {
             return None;
         }
         let step = if bytealigned { 8 } else { 1 };
-        for sb in (0..self.length - b.length).step_by(step) {
-            if self.slice(sb, sb + b.length) == *b {
-                return Some(sb);
-            }
-        }
-        None
+        (0..self.length - b.length).step_by(step).find(|&sb| self.slice(sb, sb + b.length) == *b)
     }
     
-    // TODO
+    
     // pub fn rfind(&self, b: &Bits, bytealigned: bool) -> Option<u64> {}
-    // pub fn find_all(&self, b: &Bits, bytealigned: bool) -> iter<u64> {}
+
+    // pub fn find_all<'a>(&'a self, b: &'a Bits, bytealigned: bool) -> impl Iterator<Item = u64> + 'a {
+    //     // Use the find fn to find all instances of b in self and return as an iterator
+    //     let mut start: u64 = 0;
+    //     std::iter::from_fn(move || {
+    //         let found = self.slice(start, self.length).find(b, bytealigned);
+    //         match found {
+    //             Some(x) => {
+    //                 start = x + 1;
+    //                 Some(x)
+    //             }
+    //             None => None,
+    //         }
+    //     })
+    // }
+
     // pub fn rfind_all(&self, b: &Bits, bytealigned: bool) -> iter<u64> {}
 
     pub fn count_ones(&self) -> u64 {
@@ -410,21 +471,6 @@ impl Bits {
         self.length
     }
 
-    // Return a new Bits with any excess stored bytes trimmed.
-    pub fn trim(&self) -> Self {
-        if self.offset < 8 && self.end_byte() == self.data.len() {
-            return Bits {
-                data: Arc::clone(&self.data),
-                offset: self.offset,
-                length: self.length,
-            }
-        }
-        Bits {
-            data: Arc::new(self.data[self.start_byte()..self.end_byte()].to_vec()),
-            offset: self.offset % 8,
-            length: self.length,
-        }
-    }
 
     /// Returns a reference to the raw data in the Bits object.
     /// Note that the offset and length values govern which part of this raw buffer is the actual
@@ -696,10 +742,10 @@ fn test_find() {
     assert_eq!(b3.slice(2, b3.length()).find(&b4, false), Some(1));
 }
 
-// #[test]
-// fn test_and() {
-//     let a1 = Bits::from_hex("f0f").unwrap();
-//     let a2 = Bits::from_hex("123").unwrap();
-//     let a3 = a1.and(&a2).unwrap();
-//     assert_eq!(a3, Bits::from_hex("103").unwrap());
-// }
+Add#[test]
+fn test_and() {
+    let a1 = Bits::from_hex("f0f").unwrap();
+    let a2 = Bits::from_hex("123").unwrap();
+    let a3 = a1.and_(&a2).unwrap();
+    assert_eq!(a3, Bits::from_hex("103").unwrap());
+}
