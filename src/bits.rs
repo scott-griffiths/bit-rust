@@ -9,13 +9,13 @@ use pyo3::exceptions::{PyIndexError, PyValueError};
 /// are stored.
 /// 
 #[pyclass]
-pub struct Bits {
+pub struct BitRust {
     data: Arc<Vec<u8>>,
     offset: u64,
     length: u64,
 }
 
-impl fmt::Debug for Bits {
+impl fmt::Debug for BitRust {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.length > 100 {
             return f.debug_struct("Bits")
@@ -36,9 +36,9 @@ impl fmt::Debug for Bits {
     }
 }
 
-impl Clone for Bits {
+impl Clone for BitRust {
     fn clone(&self) -> Self {
-        Bits {
+        BitRust {
             data: Arc::clone(&self.data),
             offset: self.offset,
             length: self.length,
@@ -46,7 +46,7 @@ impl Clone for Bits {
     }
 }
 
-impl PartialEq for Bits {
+impl PartialEq for BitRust {
     fn eq(&self, other: &Self) -> bool {
         if self.length != other.length {
             return false;
@@ -56,8 +56,8 @@ impl PartialEq for Bits {
 }
 
 // Things not part of the Python interface.
-impl Bits {
-    fn bitwise_op<F>(&self, other: &Bits, op: F) -> Result<Self, ()>
+impl BitRust {
+    fn bitwise_op<F>(&self, other: &BitRust, op: F) -> Result<Self, ()>
     where F: Fn(u8, u8) -> u8 {
         if self.length != other.length {
             return Err(());
@@ -67,7 +67,7 @@ impl Bits {
         for i in 0..other_offset.data.len() {
             data.push(op(self.data[i + self.start_byte()], other.data[i]));
         }
-        Ok(Bits {
+        Ok(BitRust {
             data: Arc::new(data),
             length: other.length,
             offset: other.offset,
@@ -99,7 +99,7 @@ impl Bits {
         // Create a new Bits object with the same value but a different offset.
         // Each byte will in general have to be bit shifted to the left or right.
         if self.length == 0 {
-            return Bits {
+            return BitRust {
                 data: Arc::new(vec![]),
                 offset: 0,
                 length: 0,
@@ -108,7 +108,7 @@ impl Bits {
         let byte_offset = (self.offset / 8) as usize;
         let bit_offset = self.offset % 8;
         if new_offset == bit_offset {
-            return Bits {
+            return BitRust {
                 data: Arc::new(self.data[self.start_byte()..self.end_byte()].to_vec()),
                 offset: new_offset,
                 length: self.length,
@@ -138,7 +138,7 @@ impl Bits {
                 new_data[new_byte_length - 1] = self.data[byte_offset + old_byte_length - 1] << (8 - right_shift);
             }
         }
-        Bits {
+        BitRust {
             data: Arc::new(new_data),
             offset: new_offset,
             length: self.length,
@@ -150,7 +150,7 @@ impl Bits {
         assert!(start_bit <= end_bit);
         assert!(end_bit <= self.length);
         let new_length = end_bit - start_bit;
-        Bits {
+        BitRust {
             data: Arc::clone(&self.data),
             offset: start_bit + self.offset,
             length: new_length,
@@ -160,20 +160,20 @@ impl Bits {
     // Return a new Bits with any excess stored bytes trimmed.
     pub fn trim(&self) -> Self {
         if self.offset < 8 && self.end_byte() == self.data.len() {
-            return Bits {
+            return BitRust {
                 data: Arc::clone(&self.data),
                 offset: self.offset,
                 length: self.length,
             }
         }
-        Bits {
+        BitRust {
             data: Arc::new(self.data[self.start_byte()..self.end_byte()].to_vec()),
             offset: self.offset % 8,
             length: self.length,
         }
     }
     // I think this works as a Rust version. Keeping this copy for reference.
-    pub fn find_all_rust<'a>(&'a self, b: &'a Bits, bytealigned: bool) -> impl Iterator<Item = u64> + 'a {
+    pub fn find_all_rust<'a>(&'a self, b: &'a BitRust, bytealigned: bool) -> impl Iterator<Item = u64> + 'a {
         // Use the find fn to find all instances of b in self and return as an iterator
         let mut start: u64 = 0;
         std::iter::from_fn(move || {
@@ -191,19 +191,19 @@ impl Bits {
 }
 
 #[pymethods]
-impl Bits {
+impl BitRust {
 
     pub fn __len__(&self) -> usize {
         self.length as usize
     }
 
-    pub fn __eq__(&self, rhs: &Bits) -> bool {
+    pub fn __eq__(&self, rhs: &BitRust) -> bool {
         self == rhs
     }
 
     #[staticmethod]
     pub fn from_zeros(length: u64) -> Self {
-        Bits {
+        BitRust {
             data: Arc::new(vec![0; ((length + 7) / 8) as usize]),
             offset: 0,
             length,
@@ -212,7 +212,7 @@ impl Bits {
 
     #[staticmethod]
     pub fn from_ones(length: u64) -> Self {
-        Bits {
+        BitRust {
             data: Arc::new(vec![0xff; ((length + 7) / 8) as usize]),
             offset: 0,
             length,
@@ -222,7 +222,7 @@ impl Bits {
     #[staticmethod]
     pub fn from_bytes(data: Vec<u8>) -> Self {
         let bitlength = (data.len() as u64) * 8;
-        Bits {
+        BitRust {
             data: Arc::new(data),
             offset: 0,
             length: bitlength,
@@ -233,7 +233,7 @@ impl Bits {
     pub fn from_bytes_with_offset(data: Vec<u8>, offset: u64) -> Self {
         assert!(offset < 8);
         let bitlength = (data.len() as u64) * 8 - offset;
-        Bits {
+        BitRust {
             data: Arc::new(data),
             offset: offset,
             length: bitlength,
@@ -255,7 +255,7 @@ impl Bits {
             data.push(byte);
             byte = 0;
         }
-        Ok(Bits {
+        Ok(BitRust {
             data: Arc::new(data),
             offset: 0,
             length: binary_string.len() as u64,
@@ -273,7 +273,7 @@ impl Bits {
             Ok(d) => d,
             Err(_) => return Err(PyValueError::new_err("Invalid character")),
         };
-        Ok(Bits {
+        Ok(BitRust {
             data: Arc::new(data),
             offset: 0,
             length: hex.len() as u64 * 4,
@@ -291,16 +291,16 @@ impl Bits {
             };
             bin_str.push_str(&format!("{:03b}", digit)); // Format as 3-bit binary
         }
-        Ok(Bits::from_bin(&bin_str).unwrap())
+        Ok(BitRust::from_bin(&bin_str).unwrap())
     }
     
     // Don't need - rewrite Python to convert int to bytes
     // pub fn from_int
     
     #[staticmethod]
-    pub fn join(bits_vec: Vec<PyRef<Bits>>) -> Bits {
+    pub fn join(bits_vec: Vec<PyRef<BitRust>>) -> BitRust {
         if bits_vec.is_empty() {
-            return Bits::from_zeros(0);
+            return BitRust::from_zeros(0);
         }
         if bits_vec.len() == 1 {
             return bits_vec[0].clone();
@@ -328,7 +328,7 @@ impl Bits {
             }
             new_length += bits.length;
         }
-        Bits {
+        BitRust {
             data: Arc::new(data),
             offset: new_offset,
             length: new_length,
@@ -338,6 +338,11 @@ impl Bits {
     pub fn to_bytes(&self) -> Vec<u8> {
         // TODO offset!
         self.data[self.start_byte()..self.end_byte()].to_vec()
+    }
+
+    // Just the byte data without any shifting or padding.
+    pub fn to_byte_data_with_offset(&self) -> (Vec<u8>, u64) {
+        (self.data[self.start_byte()..self.end_byte()].to_vec(), self.offset)
     }
     
     // Don't need - rewrite Python to convert bytes to int
@@ -398,26 +403,26 @@ impl Bits {
         Ok(oct_str)
     }
 
-    pub fn and_(&self, other: &Bits) -> PyResult<Bits> {
+    pub fn __and__(&self, other: &BitRust) -> PyResult<BitRust> {
         match self.bitwise_op(other, |a, b| a & b) {
             Ok(b) => Ok(b),
             Err(_) => Err(PyValueError::new_err("Lengths do not match.")),
         }
     }
-    pub fn or_(&self, other: &Bits) -> PyResult<Bits> {
+    pub fn __or__(&self, other: &BitRust) -> PyResult<BitRust> {
         match self.bitwise_op(other, |a, b| a | b) {
             Ok(b) => Ok(b),
             Err(_) => Err(PyValueError::new_err("Lengths do not match.")),
         }
     }
-    pub fn xor_(&self, other: &Bits) -> PyResult<Bits> {
+    pub fn __xor__(&self, other: &BitRust) -> PyResult<BitRust> {
         match self.bitwise_op(other, |a, b| a ^ b) {
             Ok(b) => Ok(b),
             Err(_) => Err(PyValueError::new_err("Lengths do not match.")),
         }
     }
     
-    pub fn find(&self, b: &Bits, bytealigned: bool) -> Option<u64> {
+    pub fn find(&self, b: &BitRust, bytealigned: bool) -> Option<u64> {
         if b.length > self.length {
             return None;
         }
@@ -460,7 +465,7 @@ impl Bits {
         }
         let final_bits = (self.offset + self.length) % 8;
         let new_offset = if final_bits == 0 { 0 } else { 8 - final_bits };
-        Bits {
+        BitRust {
             data: Arc::new(data),
             offset: new_offset,
             length: self.length,
@@ -504,7 +509,7 @@ impl Bits {
             return Err(PyValueError::new_err("end bit goes past the end"));
         }
         let new_length = end_bit - start_bit;
-        Ok(Bits {
+        Ok(BitRust {
             data: Arc::clone(&self.data),
             offset: start_bit + self.offset,
             length: new_length,
@@ -516,12 +521,47 @@ impl Bits {
         for byte in self.data[self.start_byte()..self.end_byte()].iter() {
             data.push(byte ^ 0xff);
         }
-        Bits {
+        BitRust {
             data: Arc::new(data),
             offset: self.offset,
             length: self.length,
         }
     }
+
+    pub fn set(&self, value: bool, index: u64) -> Self {
+        let mut data: Vec<u8> = self.data[self.start_byte()..self.end_byte()].to_vec();
+        let p: u64 = index + self.offset;
+        let byte_offset = (p / 8) as usize;
+        let bit_offset = p % 8;
+        if value {
+            data[byte_offset] |= (128 >> bit_offset);
+        } else {
+            data[byte_offset] &= !(128 >> bit_offset);
+        }
+        BitRust {
+            data: Arc::new(data),
+            offset: self.offset,
+            length: self.length,
+        }
+    }
+
+//      pub fn set_from_iterable(&self, value: bool, indices: &Vec<u64>) -> Self {
+//         let mut data: Vec<u8> = self.data[self.start_byte()..self.end_byte()].to_vec();
+//         for i in indices {
+//             let p: u64 = i + self.offset;
+//             let byte = data[(p / 8) as usize];
+//             if value {
+//                 data[(p / 8) as usize] = byte | (128 >> (p % 8));
+//             } else {
+//                 data[(p / 8) as usize] = byte & !(128 >> (p % 8));
+//             }
+//         }
+//         Bits {
+//             data: Arc::new(data),
+//             offset: self.offset,
+//             length: self.length,
+//         }
+//     }
 
 }
 
@@ -544,7 +584,7 @@ impl Bits {
 #[test]
 fn from_bytes() {
     let data: Vec<u8> = vec![10, 20, 30];
-    let bits = Bits::from_bytes(data);
+    let bits = BitRust::from_bytes(data);
     assert_eq!(*bits.data(), vec![10, 20, 30]);
     assert_eq!(bits.offset(), 0);
     assert_eq!(bits.length(), 24);
@@ -552,16 +592,16 @@ fn from_bytes() {
 
 #[test]
 fn from_hex() {
-    let bits = Bits::from_hex("0a141e").unwrap();
+    let bits = BitRust::from_hex("0a141e").unwrap();
     assert_eq!(*bits.data(), vec![10, 20, 30]);
     assert_eq!(bits.offset(), 0);
     assert_eq!(bits.length(), 24);
-    let bits = Bits::from_hex("").unwrap();
+    let bits = BitRust::from_hex("").unwrap();
     assert_eq!(bits.offset(), 0);
     assert_eq!(bits.length(), 0);
-    let bits = Bits::from_hex("hello");
+    let bits = BitRust::from_hex("hello");
     assert!(bits.is_err());
-    let bits = Bits::from_hex("1").unwrap();
+    let bits = BitRust::from_hex("1").unwrap();
     assert_eq!(*bits.data(), vec![16]);
     assert_eq!(bits.offset(), 0);
     assert_eq!(bits.length(), 4);
@@ -569,16 +609,16 @@ fn from_hex() {
 
 #[test]
 fn from_bin() {
-    let bits = Bits::from_bin("00001010").unwrap();
+    let bits = BitRust::from_bin("00001010").unwrap();
     assert_eq!(*bits.data(), vec![10]);
     assert_eq!(bits.offset(), 0);
     assert_eq!(bits.length(), 8);
-    let bits = Bits::from_bin("").unwrap();
+    let bits = BitRust::from_bin("").unwrap();
     assert_eq!(bits.offset(), 0);
     assert_eq!(bits.length(), 0);
-    let bits = Bits::from_bin("hello");
+    let bits = BitRust::from_bin("hello");
     assert!(bits.is_err());
-    let bits = Bits::from_bin("1").unwrap();
+    let bits = BitRust::from_bin("1").unwrap();
     assert_eq!(*bits.data(), vec![128]);
     assert_eq!(bits.offset(), 0);
     assert_eq!(bits.length(), 1);
@@ -586,42 +626,42 @@ fn from_bin() {
 
 #[test]
 fn from_zeros() {
-    let bits = Bits::from_zeros(8);
+    let bits = BitRust::from_zeros(8);
     assert_eq!(*bits.data(), vec![0]);
     assert_eq!(bits.offset(), 0);
     assert_eq!(bits.length(), 8);
     assert_eq!(bits.to_hex().unwrap(), "00");
-    let bits = Bits::from_zeros(9);
+    let bits = BitRust::from_zeros(9);
     assert_eq!(*bits.data(), vec![0, 0]);
     assert_eq!(bits.offset(), 0);
     assert_eq!(bits.length(), 9);
-    let bits = Bits::from_zeros(0);
+    let bits = BitRust::from_zeros(0);
     assert_eq!(bits.offset(), 0);
     assert_eq!(bits.length(), 0);
 }
 
 #[test]
 fn from_ones() {
-    let bits = Bits::from_ones(8);
+    let bits = BitRust::from_ones(8);
     assert_eq!(*bits.data(), vec![255]);
     assert_eq!(bits.offset(), 0);
     assert_eq!(bits.length(), 8);
     assert_eq!(bits.to_hex().unwrap(), "ff");
-    let bits = Bits::from_ones(9);
+    let bits = BitRust::from_ones(9);
     assert_eq!(bits.to_bin(), "111111111");
     assert!(bits.to_hex().is_err());
     assert_eq!((*bits.data())[0], 0xff);
     assert_eq!((*bits.data())[1] & 0x80, 0x80);
     assert_eq!(bits.offset(), 0);
     assert_eq!(bits.length(), 9);
-    let bits = Bits::from_ones(0);
+    let bits = BitRust::from_ones(0);
     assert_eq!(bits.offset(), 0);
     assert_eq!(bits.length(), 0);
 }
 
 #[test]
 fn get_index() {
-    let bits = Bits::from_bin("001100").unwrap();
+    let bits = BitRust::from_bin("001100").unwrap();
     assert_eq!(bits.index(0).unwrap(), false);
     assert_eq!(bits.index(1).unwrap(), false);
     assert_eq!(bits.index(2).unwrap(), true);
@@ -663,7 +703,7 @@ fn get_index() {
 
 #[test]
 fn hex_edge_cases() {
-    let b1 = Bits::from_hex("0123456789abcdef").unwrap();
+    let b1 = BitRust::from_hex("0123456789abcdef").unwrap();
     let b2 = b1.getslice(12, b1.length()).unwrap();
     assert_eq!(b2.to_hex().unwrap(), "3456789abcdef");
     assert_eq!(b2.offset(), 12);
@@ -702,39 +742,39 @@ fn hex_edge_cases() {
 #[test]
 fn test_count() {
     let x = vec![1, 2, 3];
-    let b = Bits::from_bytes(x);
+    let b = BitRust::from_bytes(x);
     assert_eq!(b.count_ones(), 4);
     assert_eq!(b.count_zeros(), 20);
 }
 
 #[test]
 fn test_reverse() {
-    let b = Bits::from_bin("11110000").unwrap();
+    let b = BitRust::from_bin("11110000").unwrap();
     let bp = b.reverse();
     assert_eq!(bp.to_bin(), "00001111");
-    let b = Bits::from_bin("1").unwrap();
+    let b = BitRust::from_bin("1").unwrap();
     let bp = b.reverse();
     assert_eq!(bp.to_bin(), "1");
-    let empty = Bits::from_bin("").unwrap();
+    let empty = BitRust::from_bin("").unwrap();
     let empty_p = empty.reverse();
     assert_eq!(empty_p.to_bin(), "");
-    let b = Bits::from_bin("11001").unwrap();
+    let b = BitRust::from_bin("11001").unwrap();
     let bp = b.reverse();
     assert_eq!(bp.to_bin(), "10011");
     let hex_str = "98798379287592836521000cbdbeff";
-    let long = Bits::from_hex(hex_str).unwrap();
+    let long = BitRust::from_hex(hex_str).unwrap();
     let rev = long.reverse();
     assert_eq!(rev.reverse(), long);
 }
 
 #[test]
 fn test_invert() {
-    let b = Bits::from_bin("0").unwrap();
+    let b = BitRust::from_bin("0").unwrap();
     assert_eq!(b.invert().to_bin(), "1");
-    let b = Bits::from_bin("01110").unwrap();
+    let b = BitRust::from_bin("01110").unwrap();
     assert_eq!(b.invert().to_bin(), "10001");
     let hex_str = "abcdef8716258765162548716258176253172635712654714";
-    let long = Bits::from_hex(hex_str).unwrap();
+    let long = BitRust::from_hex(hex_str).unwrap();
     let temp = long.invert();
     assert_eq!(long.length(), temp.length());
     assert_eq!(temp.invert(), long);
@@ -752,19 +792,19 @@ fn test_invert() {
 
 #[test]
 fn test_find() {
-    let b1 = Bits::from_zeros(10);
-    let b2 = Bits::from_ones(2);
+    let b1 = BitRust::from_zeros(10);
+    let b2 = BitRust::from_ones(2);
     assert_eq!(b1.find(&b2, false), None);
-    let b3 = Bits::from_bin("00001110").unwrap();
-    let b4 = Bits::from_bin("01").unwrap();
+    let b3 = BitRust::from_bin("00001110").unwrap();
+    let b4 = BitRust::from_bin("01").unwrap();
     assert_eq!(b3.find(&b4, false), Some(3));
     assert_eq!(b3.slice(2, b3.length()).find(&b4, false), Some(1));
 }
 
 #[test]
 fn test_and() {
-    let a1 = Bits::from_hex("f0f").unwrap();
-    let a2 = Bits::from_hex("123").unwrap();
+    let a1 = BitRust::from_hex("f0f").unwrap();
+    let a2 = BitRust::from_hex("123").unwrap();
     let a3 = a1.and_(&a2).unwrap();
-    assert_eq!(a3, Bits::from_hex("103").unwrap());
+    assert_eq!(a3, BitRust::from_hex("103").unwrap());
 }

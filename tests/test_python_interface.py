@@ -1,5 +1,5 @@
 
-from bit_rust import Bits
+from bit_rust import BitRust as Bits
 import pytest
 
 def test_creation():
@@ -26,7 +26,7 @@ def test_join():
     assert c.to_bin() == '00001111'
     d = c.reverse()
     assert d.to_bin() == '11110000'
-    e = c.and_(d)
+    e = c & d
     assert e.to_bin() == '00000000'
 
 def test_find():
