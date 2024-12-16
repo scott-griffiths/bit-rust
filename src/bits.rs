@@ -197,6 +197,10 @@ impl Bits {
         self.length as usize
     }
 
+    pub fn __eq__(&self, rhs: &Bits) -> bool {
+        self == rhs
+    }
+
     #[staticmethod]
     pub fn from_zeros(length: u64) -> Self {
         Bits {
@@ -221,6 +225,17 @@ impl Bits {
         Bits {
             data: Arc::new(data),
             offset: 0,
+            length: bitlength,
+        }
+    }
+
+    #[staticmethod]
+    pub fn from_bytes_with_offset(data: Vec<u8>, offset: u64) -> Self {
+        assert!(offset < 8);
+        let bitlength = (data.len() as u64) * 8 - offset;
+        Bits {
+            data: Arc::new(data),
+            offset: offset,
             length: bitlength,
         }
     }
@@ -495,8 +510,6 @@ impl Bits {
             length: new_length,
         })
     }
-
-    pub fn getslice_withstep(&self, )
 
     pub fn invert(&self) -> Self {
         let mut data: Vec<u8> = Vec::new();
