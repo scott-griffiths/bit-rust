@@ -192,7 +192,11 @@ impl Bits {
 
 #[pymethods]
 impl Bits {
-    
+
+    pub fn __len__(&self) -> usize {
+        self.length as usize
+    }
+
     #[staticmethod]
     pub fn from_zeros(length: u64) -> Self {
         Bits {
@@ -491,6 +495,8 @@ impl Bits {
             length: new_length,
         })
     }
+
+    pub fn getslice_withstep(&self, )
 
     pub fn invert(&self) -> Self {
         let mut data: Vec<u8> = Vec::new();
