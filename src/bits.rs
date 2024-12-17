@@ -180,8 +180,8 @@ impl BitRust {
             let found = self.slice(start, self.length).find(b, bytealigned);
             match found {
                 Some(x) => {
-                    start = x + 1;
-                    Some(x)
+                    start = start + x + 1;
+                    Some(start - 1)
                 }
                 None => None,
             }
@@ -427,7 +427,13 @@ impl BitRust {
             return None;
         }
         let step = if bytealigned { 8 } else { 1 };
-        (0..self.length - b.length).step_by(step).find(|&sb| self.slice(sb, sb + b.length) == *b)
+        for sb in (0..self.length - b.length + 1).step_by(step) {
+            if self.slice(sb, sb + b.length) == *b {
+                return Some(sb);
+            }
+        }
+        None
+        // (0..self.length - b.length).step_by(step).find(|&sb| self.slice(sb, sb + b.length) == *b)
     }
     
     
@@ -503,7 +509,12 @@ impl BitRust {
         &self.data
     }
 
-    pub fn getslice(&self, start_bit: u64, end_bit: u64) -> PyResult<Self> {
+    #[pyo3(signature = (start_bit, end_bit=None))]
+    pub fn getslice(&self, start_bit: u64, end_bit: Option<u64>) -> PyResult<Self> {
+        let end_bit = match end_bit {
+            Some(end_bit) => end_bit,
+            None => self.length
+        };
         assert!(start_bit <= end_bit);
         if end_bit > self.length {
             return Err(PyValueError::new_err("end bit goes past the end"));
@@ -534,7 +545,7 @@ impl BitRust {
         let byte_offset = (p / 8) as usize;
         let bit_offset = p % 8;
         if value {
-            data[byte_offset] |= (128 >> bit_offset);
+            data[byte_offset] |= 128 >> bit_offset;
         } else {
             data[byte_offset] &= !(128 >> bit_offset);
         }
@@ -704,7 +715,7 @@ fn get_index() {
 #[test]
 fn hex_edge_cases() {
     let b1 = BitRust::from_hex("0123456789abcdef").unwrap();
-    let b2 = b1.getslice(12, b1.length()).unwrap();
+    let b2 = b1.getslice(12, Some(b1.length())).unwrap();
     assert_eq!(b2.to_hex().unwrap(), "3456789abcdef");
     assert_eq!(b2.offset(), 12);
     assert_eq!(b2.length(), 52);
@@ -805,6 +816,16 @@ fn test_find() {
 fn test_and() {
     let a1 = BitRust::from_hex("f0f").unwrap();
     let a2 = BitRust::from_hex("123").unwrap();
-    let a3 = a1.and_(&a2).unwrap();
+    let a3 = a1.__and__(&a2).unwrap();
     assert_eq!(a3, BitRust::from_hex("103").unwrap());
+}
+
+#[test]
+fn test_findall() {
+    let b = BitRust::from_hex("00ff0ff0").unwrap();
+    let a = BitRust::from_hex("ff").unwrap();
+    let q: Vec<u64> = b.find_all_rust(&a, false).collect();
+    assert_eq!(q, vec![8, 20]);
+
+
 }
