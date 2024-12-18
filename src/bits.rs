@@ -334,20 +334,32 @@ impl BitRust {
             length: new_length,
         }
     }
-    
+
+    /// Convert to bytes, padding with zero bits if needed.
     pub fn to_bytes(&self) -> Vec<u8> {
-        // TODO offset!
-        self.data[self.start_byte()..self.end_byte()].to_vec()
+        if self.length == 0 {
+            return Vec::new();
+        }
+        let no_offset: &BitRust = if self.offset == 0 {
+            self
+        } else {
+            &self.copy_with_new_offset(0)
+        };
+        if no_offset.length % 8 == 0 {
+            return no_offset.data[no_offset.start_byte()..no_offset.end_byte()].to_vec();
+        }
+        // Make sure final byte is padded with zeros
+        let mut bytes = no_offset.data[no_offset.start_byte()..no_offset.end_byte() - 1].to_vec();
+        let final_byte = no_offset.data[no_offset.end_byte() - 1];
+        let padding = 8 - (no_offset.length % 8);
+        bytes.push(final_byte & (0xff << padding));
+        bytes
     }
 
     // Just the byte data without any shifting or padding.
     pub fn to_byte_data_with_offset(&self) -> (Vec<u8>, u64) {
         (self.data[self.start_byte()..self.end_byte()].to_vec(), self.offset)
     }
-    
-    // Don't need - rewrite Python to convert bytes to int
-    // pub fn to uint(&self) 
-    // pub fn to_int(&self)
 
     pub fn to_hex(&self) -> PyResult<String> {
         if self.length % 4 != 0 {
@@ -433,7 +445,6 @@ impl BitRust {
             }
         }
         None
-        // (0..self.length - b.length).step_by(step).find(|&sb| self.slice(sb, sb + b.length) == *b)
     }
     
     
