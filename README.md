@@ -1,6 +1,6 @@
 > :warning: **This project is not intended for outside use.**
 
-**bit-rust** is a simple Rust library for basic manipulation of binary data.
+**bit-rust** is a Python wrapper around a simple Rust library for basic manipulation of binary data.
 
 It's mostly an opportunity for me to learn some Rust, but the plan is to use it to speed up the 
 internals of the [**bitformat**](https://github.com/scott-griffiths/bitformat) Python library.

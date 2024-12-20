@@ -304,7 +304,7 @@ impl BitRust {
 
     #[pyo3(signature = (bits_vec, mutable=None))]
     #[staticmethod]
-    pub fn join(bits_vec: Vec<PyRef<BitRust>>, mutable: Option<bool>) -> BitRust {
+    pub fn join(bits_vec: Vec<PyRef<BitRust>>, mutable: Option<bool>) -> Self {
         if bits_vec.is_empty() {
             return BitRust::from_zeros(0, mutable);
         }
@@ -340,9 +340,8 @@ impl BitRust {
             length: new_length,
             mutable: mutable.unwrap_or(false)
         }
-    }
 
-    // pub fn from_int
+    }
 
     #[pyo3(signature = (oct, mutable=None))]
     #[staticmethod]
@@ -463,33 +462,33 @@ impl BitRust {
             return None;
         }
         let step = if bytealigned { 8 } else { 1 };
-        for sb in (0..self.length - b.length + 1).step_by(step) {
-            if self.slice(sb, sb + b.length) == *b {
-                return Some(sb);
+        let mut pos = 0;
+        while pos <= self.length - b.length {
+            if self.slice(pos, pos + b.length) == *b {
+                return Some(pos);
             }
+            pos += step;
         }
         None
     }
     
-    
-    // pub fn rfind(&self, b: &Bits, bytealigned: bool) -> Option<u64> {}
-
-    // pub fn find_all<'a>(&'a self, b: &'a Bits, bytealigned: bool) -> impl Iterator<Item = u64> + 'a {
-    //     // Use the find fn to find all instances of b in self and return as an iterator
-    //     let mut start: u64 = 0;
-    //     std::iter::from_fn(move || {
-    //         let found = self.slice(start, self.length).find(b, bytealigned);
-    //         match found {
-    //             Some(x) => {
-    //                 start = x + 1;
-    //                 Some(x)
-    //             }
-    //             None => None,
-    //         }
-    //     })
-    // }
-
-    // pub fn rfind_all(&self, b: &Bits, bytealigned: bool) -> iter<u64> {}
+    pub fn rfind(&self, b: &BitRust, bytealigned: bool) -> Option<u64> {
+        if b.length > self.length {
+            return None;
+        }
+        let step = if bytealigned { 8 } else { 1 };
+        let mut pos = self.length - b.length;
+        if step == 8 {
+            pos = pos / 8 * 8;
+        }
+        while pos >= step {
+            if self.slice(pos, pos + b.length) == *b {
+                return Some(pos);
+            }
+            pos -= step;
+        }
+        None
+    }
 
     pub fn count_ones(&self) -> u64 {
         self.count()
@@ -499,6 +498,7 @@ impl BitRust {
         self.length - self.count()
     }
 
+    /// Returns a new BitRust with all bits reversed.
     pub fn reverse(&self) -> Self {
         let mut data: Vec<u8> = Vec::new();
         for byte in self.data[self.start_byte()..self.end_byte()].iter() {
@@ -517,6 +517,7 @@ impl BitRust {
     // TODO
     // pub fn iter(&self) -> iter<bool> {}
 
+    /// Returns the bool value at a given bit index.
     pub fn getindex(&self, bit_index: u64) -> PyResult<bool> {
         if bit_index >= self.length {
             return Err(PyIndexError::new_err("Out of range."));
@@ -536,7 +537,6 @@ impl BitRust {
         self.length
     }
 
-
     /// Returns a reference to the raw data in the Bits object.
     /// Note that the offset and length values govern which part of this raw buffer is the actual
     /// binary data.
@@ -544,8 +544,10 @@ impl BitRust {
         &self.data
     }
 
+    /// Return a slice of the current BitRust. Uses a view on the current byte data.
     #[pyo3(signature = (start_bit, end_bit=None))]
     pub fn getslice(&self, start_bit: u64, end_bit: Option<u64>) -> PyResult<Self> {
+        // assert!(self.mutable == false);
         let end_bit = match end_bit {
             Some(end_bit) => end_bit,
             None => self.length
@@ -563,10 +565,22 @@ impl BitRust {
         })
     }
 
-    pub fn invert(&self) -> Self {
+    // Return new BitRust with single bit flipped. If pos is None then flip all the bits.
+    #[pyo3(signature = (pos=None))]
+    pub fn invert(&self, pos: Option<u64>) -> Self {
         let mut data: Vec<u8> = Vec::new();
-        for byte in self.data[self.start_byte()..self.end_byte()].iter() {
-            data.push(byte ^ 0xff);
+        match pos {
+            None => {
+                // Invert every bit
+                for byte in self.data[self.start_byte()..self.end_byte()].iter() {
+                    data.push(byte ^ 0xff);
+                }
+            }
+            Some(pos) => {
+                // Just invert the bit at pos
+                data = self.data[self.start_byte()..self.end_byte()].to_vec();
+                data[((pos + self.offset) / 8) as usize] ^= 128 >> ((pos + self.offset) % 8);
+            }
         }
         BitRust {
             data: Arc::new(data),
@@ -574,6 +588,16 @@ impl BitRust {
             length: self.length,
             mutable: false,
         }
+    }
+
+    /// Returns true if all of the bits are set to 1.
+    pub fn all_set(&self) -> bool {
+        self.count_ones() == self.length
+    }
+
+    /// Returns true if any of the bits are set to 1.
+    pub fn any_set(&self) -> bool {
+        self.count_ones() != 0
     }
 
     pub fn set(&self, value: bool, index: u64) -> Self {
@@ -594,6 +618,7 @@ impl BitRust {
         }
     }
 
+    /// Return a copy with the mutable flag set.
     pub fn get_mutable_copy(&self) -> Self {
         BitRust {
             data: Arc::new(self.data[self.start_byte()..self.end_byte()].to_vec()),
@@ -602,7 +627,9 @@ impl BitRust {
             mutable: true,
         }
     }
-    
+
+    pub fn setitem
+
 
 //      pub fn set_from_iterable(&self, value: bool, indices: &Vec<u64>) -> Self {
 //         let mut data: Vec<u8> = self.data[self.start_byte()..self.end_byte()].to_vec();
@@ -733,9 +760,9 @@ fn get_index() {
 
 // #[test]
 // fn join_whole_byte() {
-//     let b1 = Bits::new(vec![5, 10, 20], 0, 24).unwrap();
-//     let b2 = Bits::from_bytes(vec![30, 40, 50]);
-//     let j = Bits::join(&vec![&b1, &b2, &b1]);
+//     let b1 = BitRust::from_bytes(vec![5, 10, 20], None).slice( 0, 24);
+//     let b2 = BitRust::from_bytes(vec![30, 40, 50], None);
+//     let j = BitRust::join(&vec![&b1, &b2, &b1], None);
 //     assert_eq!(*j.data(), vec![5, 10, 20, 30, 40, 50, 5, 10, 20]);
 //     assert_eq!(j.offset(), 0);
 //     assert_eq!(j.length(), 72);
@@ -829,14 +856,14 @@ fn test_reverse() {
 #[test]
 fn test_invert() {
     let b = BitRust::from_bin("0", None).unwrap();
-    assert_eq!(b.invert().to_bin(), "1");
+    assert_eq!(b.invert(None).to_bin(), "1");
     let b = BitRust::from_bin("01110", None).unwrap();
-    assert_eq!(b.invert().to_bin(), "10001");
+    assert_eq!(b.invert(None).to_bin(), "10001");
     let hex_str = "abcdef8716258765162548716258176253172635712654714";
     let long = BitRust::from_hex(hex_str, None).unwrap();
-    let temp = long.invert();
+    let temp = long.invert(None);
     assert_eq!(long.length(), temp.length());
-    assert_eq!(temp.invert(), long);
+    assert_eq!(temp.invert(None), long);
 }
 
 // #[test]
@@ -858,6 +885,15 @@ fn test_find() {
     let b4 = BitRust::from_bin("01", None).unwrap();
     assert_eq!(b3.find(&b4, false), Some(3));
     assert_eq!(b3.slice(2, b3.length()).find(&b4, false), Some(1));
+}
+
+#[test]
+fn test_rfind() {
+    let b1 = BitRust::from_hex("00780f0", None).unwrap();
+    let b2 = BitRust::from_bin("1111", None).unwrap();
+    assert_eq!(b1.rfind(&b2, false), Some(20));
+    assert_eq!(b1.find(&b2, false), Some(9));
+
 }
 
 #[test]
