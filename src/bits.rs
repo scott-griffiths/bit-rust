@@ -119,23 +119,31 @@ impl BitRust {
                 mutable: self.mutable,
             }
         }
-        let old_byte_length = ((self.length + self.offset + 7)/ 8) as usize;
+        let old_byte_length = self.end_byte() - self.start_byte();
         let new_byte_length = ((self.length + new_offset + 7) / 8) as usize;
         let mut new_data: Vec<u8> = vec![0; new_byte_length];
         if new_offset < bit_offset {
             let left_shift = bit_offset - new_offset;
             debug_assert!(left_shift < 8);
+            debug_assert!(new_byte_length == old_byte_length || new_byte_length == old_byte_length - 1);
             // Do everything up to the final byte
             for i in 0..new_byte_length - 1 {
                 new_data[i] = (self.data[i + byte_offset] << left_shift) + (self.data[i + 1 + byte_offset] >> (8 - left_shift));
             }
             // The final byte
-            new_data[new_byte_length - 1] = self.data[byte_offset + new_byte_length - 1] << left_shift;
+            if old_byte_length == new_byte_length {
+                new_data[new_byte_length - 1] = self.data[byte_offset + new_byte_length - 1] << left_shift;
+            } else {
+                debug_assert!(old_byte_length - 1 == new_byte_length);
+                new_data[new_byte_length - 1] = (self.data[byte_offset + new_byte_length - 1] << left_shift) +
+                    (self.data[byte_offset + new_byte_length] >> (8 - left_shift));
+            }
         }
         else {
             let right_shift: u64 = new_offset - bit_offset;
             debug_assert!(right_shift < 8);
-            new_data[0] = self.data[0] >> right_shift;
+            debug_assert!(new_byte_length == old_byte_length || new_byte_length == old_byte_length + 1);
+            new_data[0] = self.data[byte_offset] >> right_shift;
             for i in 1..old_byte_length {
                 new_data[i] = (self.data[i + byte_offset] >> right_shift) + (self.data[i + byte_offset - 1] << (8 - right_shift));
             }
@@ -302,6 +310,7 @@ impl BitRust {
         })
     }
 
+
     #[pyo3(signature = (bits_vec, mutable=None))]
     #[staticmethod]
     pub fn join(bits_vec: Vec<PyRef<BitRust>>, mutable: Option<bool>) -> Self {
@@ -340,7 +349,6 @@ impl BitRust {
             length: new_length,
             mutable: mutable.unwrap_or(false)
         }
-
     }
 
     #[pyo3(signature = (oct, mutable=None))]
@@ -624,7 +632,7 @@ impl BitRust {
             mutable: false,
         })
     }
-    
+
     /// Return a copy with the mutable flag set.
     pub fn get_mutable_copy(&self) -> Self {
         BitRust {
@@ -915,6 +923,23 @@ fn test_findall() {
     let a = BitRust::from_hex("ff", None).unwrap();
     let q: Vec<u64> = b.find_all_rust(&a, false).collect();
     assert_eq!(q, vec![8, 20]);
+}
 
-
+#[test]
+fn test_copy_with_new_offset() {
+    let bit_list = vec!["0", "1", "00110011", "11111111000000001", "00", "11", "01010101010101010101010101010"];
+    for bit_str in bit_list {
+        for start in 0..bit_str.len() {
+            for end in start..bit_str.len() {
+                let a = BitRust::from_bin(bit_str, None).unwrap().slice(start as u64, end as u64);
+                for offset in 0..=7 {
+                    let b = a.copy_with_new_offset(offset);
+                    assert_eq!(b.to_bin(), &bit_str[start..end], "'{}' {} {} {}", bit_str, offset, start, end);
+                    if b.length() != 0 {
+                        assert_eq!(b.offset, offset, "'{}' {} {} {}", bit_str, offset, start, end);
+                    }
+                }
+            }
+        }
+    }
 }
