@@ -600,9 +600,16 @@ impl BitRust {
         self.count_ones() != 0
     }
 
-    pub fn set(&self, value: bool, index: u64) -> Self {
+    // Return new BitRust with bit at index set to value.
+    pub fn set_index(&self, value: bool, mut index: i64) -> PyResult<Self> {
+        if index < 0 {
+            index += self.length as i64;
+            if index < 0 {
+                return Err(PyIndexError::new_err("Negative index past the end"));
+            }
+        }
         let mut data: Vec<u8> = self.data[self.start_byte()..self.end_byte()].to_vec();
-        let p: u64 = index + self.offset;
+        let p: u64 = index as u64 + self.offset;
         let byte_offset = (p / 8) as usize;
         let bit_offset = p % 8;
         if value {
@@ -610,14 +617,14 @@ impl BitRust {
         } else {
             data[byte_offset] &= !(128 >> bit_offset);
         }
-        BitRust {
+        Ok(BitRust {
             data: Arc::new(data),
             offset: self.offset,
             length: self.length,
             mutable: false,
-        }
+        })
     }
-
+    
     /// Return a copy with the mutable flag set.
     pub fn get_mutable_copy(&self) -> Self {
         BitRust {
@@ -627,8 +634,6 @@ impl BitRust {
             mutable: true,
         }
     }
-
-    pub fn setitem
 
 
 //      pub fn set_from_iterable(&self, value: bool, indices: &Vec<u64>) -> Self {
