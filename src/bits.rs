@@ -78,10 +78,26 @@ impl BitRust {
     }
     
     fn count(&self) -> u64 {
-        let mut count: u64 = 0;
-        let clipped = self.copy_with_new_offset(0);
-        for byte in clipped.data.iter() {
-            count += byte.count_ones() as u64;
+        if self.length == 0 {
+            return 0;
+        }
+        // Case where there's only one byte of used data.
+        if self.start_byte() == self.end_byte() {
+            if self.offset == 0 && self.length == 8 {
+                return self.data[self.start_byte()].count_ones() as u64;
+            }
+            return ((self.data[self.start_byte()] << (self.offset % 8)) >> (8 - self.length)).count_ones() as u64;
+        }
+        // Otherwise do first byte, then last byte, then any inbetween.
+        let mut count = (self.data[self.start_byte()] << (self.offset % 8)).count_ones() as u64;
+        let pad_bits = 8 - ((self.offset + self.length) % 8);
+        if pad_bits == 8 {
+            count += self.data[self.end_byte() - 1].count_ones() as u64;
+        } else {
+            count += (self.data[self.end_byte() - 1] >> pad_bits).count_ones() as u64;
+        }
+        for i in self.start_byte() + 1..self.end_byte() - 1 {
+            count += self.data[i].count_ones() as u64;
         }
         count
     }
