@@ -78,7 +78,46 @@ impl BitRust {
             mutable: false,
         })
     }
-    
+
+    fn join_internal(bits_vec: &Vec<&BitRust>, mutable: Option<bool>) -> Self {
+        if bits_vec.is_empty() {
+            return BitRust::from_zeros(0, mutable);
+        }
+        if bits_vec.len() == 1 {
+            return bits_vec[0].clone();
+        }
+        let mut data = bits_vec[0].data[bits_vec[0].start_byte()..bits_vec[0].end_byte()].to_vec();
+        let new_offset: u64 = bits_vec[0].offset % 8;
+        let mut new_length: u64 = bits_vec[0].length;
+        // Go though the vec of Bits and set the offset of each to the number of bits in the final byte of the previous one
+        for bits in &bits_vec[1..] {
+            if bits.length == 0 {
+                continue;
+            }
+            let extra_bits = (new_length + new_offset) % 8;
+            let offset_bits = bits.copy_with_new_offset(extra_bits);
+            if extra_bits == 0 {
+                data.extend(offset_bits.data[offset_bits.start_byte()..offset_bits.end_byte()].to_vec());
+            }
+            else {
+                // Combine last byte of data with first byte of offset_bits.data.
+                // The first extra_bits come from the last byte of data, the rest from the first byte of offset_bits.data.
+                let last_byte = data.pop().unwrap() & !(0xff >> extra_bits);
+                let first_byte = offset_bits.data[0] & (0xff >> extra_bits);
+                data.push(last_byte + first_byte);
+                data.extend(&offset_bits.data[1..]);
+            }
+            new_length += bits.length;
+        }
+        BitRust {
+            data: Arc::new(data),
+            offset: new_offset,
+            length: new_length,
+            mutable: mutable.unwrap_or(false)
+        }
+    }
+
+
     fn count(&self) -> u64 {
         if self.length == 0 {
             return 0;
@@ -328,45 +367,11 @@ impl BitRust {
         })
     }
 
-
     #[pyo3(signature = (bits_vec, mutable=None))]
     #[staticmethod]
     pub fn join(bits_vec: Vec<PyRef<BitRust>>, mutable: Option<bool>) -> Self {
-        if bits_vec.is_empty() {
-            return BitRust::from_zeros(0, mutable);
-        }
-        if bits_vec.len() == 1 {
-            return bits_vec[0].clone();
-        }
-        let mut data = bits_vec[0].data[bits_vec[0].start_byte()..bits_vec[0].end_byte()].to_vec();
-        let new_offset: u64 = bits_vec[0].offset % 8;
-        let mut new_length: u64 = bits_vec[0].length;
-        // Go though the vec of Bits and set the offset of each to the number of bits in the final byte of the previous one
-        for bits in &bits_vec[1..] {
-            if bits.length == 0 {
-                continue;
-            }
-            let extra_bits = (new_length + new_offset) % 8;
-            let offset_bits = bits.copy_with_new_offset(extra_bits);
-            if extra_bits == 0 {
-                data.extend(offset_bits.data[offset_bits.start_byte()..offset_bits.end_byte()].to_vec());
-            }
-            else {
-                // Combine last byte of data with first byte of offset_bits.data.
-                // The first extra_bits come from the last byte of data, the rest from the first byte of offset_bits.data.
-                let last_byte = data.pop().unwrap() & !(0xff >> extra_bits);
-                let first_byte = offset_bits.data[0] & (0xff >> extra_bits);
-                data.push(last_byte + first_byte);
-                data.extend(&offset_bits.data[1..]);
-            }
-            new_length += bits.length;
-        }
-        BitRust {
-            data: Arc::new(data),
-            offset: new_offset,
-            length: new_length,
-            mutable: mutable.unwrap_or(false)
-        }
+        let my_vec: Vec<&BitRust> = bits_vec.iter().map(|x| &**x).collect();
+        return BitRust::join_internal(&my_vec, mutable);
     }
 
     #[pyo3(signature = (oct, mutable=None))]
@@ -584,12 +589,7 @@ impl BitRust {
             None => self.length
         };
         if start_bit >= end_bit {
-            return Ok(BitRust { // TODO: Use singleton empty BitRust ?
-                data: Arc::new(vec![]),
-                offset: 0,
-                length: 0,
-                mutable: false,
-            });
+            return Ok(BitRust::from_zeros(0, None)); // TODO: Use static instance for empty BitRust ?
         }
         assert!(start_bit < end_bit);
         if end_bit > self.length {
@@ -672,6 +672,17 @@ impl BitRust {
             length: self.length,
             mutable: true,
         }
+    }
+
+    pub fn set_mutable_slice(&mut self, start: u64, end: u64, value: &BitRust) -> PyResult<()> {
+        if self.mutable == false {
+            return Err(PyValueError::new_err("Not mutable"));
+        }
+        let start_slice = self.getslice(0, Some(start))?;
+        let end_slice = self.getslice(end, Some(self.length))?;
+        let joined = BitRust::join_internal(&vec![&start_slice, value, &end_slice], None);
+        *self = joined;
+        Ok(())
     }
 
 
@@ -973,4 +984,13 @@ fn test_copy_with_new_offset() {
             }
         }
     }
+}
+
+#[test]
+fn test_set_mutable_slice() {
+    let mut a = BitRust::from_hex("0011223344", Some(true)).unwrap();
+    let b = BitRust::from_hex("ff", None).unwrap();
+    a.set_mutable_slice(8, 16, &b).unwrap();
+    assert_eq!(a.to_hex().unwrap(), "00ff223344");
+
 }
