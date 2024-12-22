@@ -64,16 +64,18 @@ impl BitRust {
         if self.length != other.length {
             return Err(());
         }
-        let other_offset = other.copy_with_new_offset(self.offset % 8);
+        let a = BitRust::from_bin(&self.to_bin(), None).unwrap();
+        let b = BitRust::from_bin(&other.to_bin(), None).unwrap();
+
         let mut data: Vec<u8> = Vec::new();
-        for i in 0..other_offset.data.len() {
-            data.push(op(self.data[i + self.start_byte()], other.data[i]));
+        for i in 0..a.data.len() {
+            data.push(op(a.data[i], b.data[i]));
         }
         Ok(BitRust {
             data: Arc::new(data),
-            length: other.length,
-            offset: other.offset,
-            mutable: self.mutable,
+            length: self.length,
+            offset: 0,
+            mutable: false,
         })
     }
     
@@ -542,11 +544,16 @@ impl BitRust {
     // pub fn iter(&self) -> iter<bool> {}
 
     /// Returns the bool value at a given bit index.
-    pub fn getindex(&self, bit_index: u64) -> PyResult<bool> {
-        if bit_index >= self.length {
+    pub fn getindex(&self, mut bit_index: i64) -> PyResult<bool> {
+        let length = self.length as i64;
+        if bit_index >= length || bit_index < -length {
             return Err(PyIndexError::new_err("Out of range."));
         }
-        let p: u64 = bit_index + self.offset;
+        if bit_index < 0 {
+            bit_index += length;
+        }
+        debug_assert!(bit_index >= 0);
+        let p: u64 = bit_index as u64 + self.offset;
         let byte = self.data[(p / 8) as usize];
         Ok(byte & (128 >> (p % 8)) != 0)
     }
@@ -576,7 +583,15 @@ impl BitRust {
             Some(end_bit) => end_bit,
             None => self.length
         };
-        assert!(start_bit <= end_bit);
+        if start_bit >= end_bit {
+            return Ok(BitRust { // TODO: Use singleton empty BitRust ?
+                data: Arc::new(vec![]),
+                offset: 0,
+                length: 0,
+                mutable: false,
+            });
+        }
+        assert!(start_bit < end_bit);
         if end_bit > self.length {
             return Err(PyValueError::new_err("end bit goes past the end"));
         }
