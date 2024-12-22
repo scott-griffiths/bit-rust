@@ -39,11 +39,20 @@ impl fmt::Debug for BitRust {
 
 impl Clone for BitRust {
     fn clone(&self) -> Self {
-        BitRust {
-            data: Arc::clone(&self.data),
-            offset: self.offset,
-            length: self.length,
-            mutable: self.mutable,
+        if self.mutable {
+            BitRust {
+                data: Arc::new(self.data[self.start_byte()..self.end_byte()].to_vec()),
+                offset: self.offset,
+                length: self.length,
+                mutable: true,
+            }
+        } else {
+            BitRust {
+                data: Arc::clone(&self.data),
+                offset: self.offset,
+                length: self.length,
+                mutable: false,
+            }
         }
     }
 }
@@ -580,14 +589,15 @@ impl BitRust {
         &self.data
     }
 
+    pub fn mutable(&self) -> bool {
+        self.mutable
+    }
+
     /// Return a slice of the current BitRust. Uses a view on the current byte data.
     #[pyo3(signature = (start_bit, end_bit=None))]
     pub fn getslice(&self, start_bit: u64, end_bit: Option<u64>) -> PyResult<Self> {
         // assert!(self.mutable == false);
-        let end_bit = match end_bit {
-            Some(end_bit) => end_bit,
-            None => self.length
-        };
+        let end_bit = end_bit.unwrap_or(self.length);
         if start_bit >= end_bit {
             return Ok(BitRust::from_zeros(0, None)); // TODO: Use static instance for empty BitRust ?
         }
@@ -600,7 +610,7 @@ impl BitRust {
             data: Arc::clone(&self.data),
             offset: start_bit + self.offset,
             length: new_length,
-            mutable: false,
+            mutable: self.mutable,
         })
     }
 
@@ -992,5 +1002,11 @@ fn test_set_mutable_slice() {
     let b = BitRust::from_hex("ff", None).unwrap();
     a.set_mutable_slice(8, 16, &b).unwrap();
     assert_eq!(a.to_hex().unwrap(), "00ff223344");
+}
 
+#[test]
+fn test_getslice() {
+    let a = BitRust::from_bin("00010001", Some(true)).unwrap();
+    assert_eq!(a.getslice(0, Some(4)).unwrap().to_bin(), "0001");
+    assert_eq!(a.getslice(4, Some(8)).unwrap().to_bin(), "0001");
 }
