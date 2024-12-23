@@ -125,40 +125,6 @@ impl BitRust {
         }
     }
 
-
-    fn count(&self) -> u64 {
-        if self.length == 0 {
-            return 0;
-        }
-        let offset = self.offset % 8;
-        let padding = if (self.length + offset) % 8 == 0 { 0 } else { (8 - (self.length + offset) % 8) };
-        // Case where there's only one byte of used data.
-        if self.start_byte() + 1 == self.end_byte() {
-            return ((self.data[self.start_byte()] << offset) >> (offset + padding)).count_ones() as u64;
-        }
-        let mut c: u64 = self.data[self.start_byte()..self.end_byte()].iter().map(|x| x.count_ones() as u64).sum();
-        // Subtract any bits in the offset or padding.
-        if offset != 0 {
-            c = c - (self.data[self.start_byte()] >> (8 - offset)).count_ones() as u64;
-        }
-        if padding != 0 {
-            c = c - (self.data[self.end_byte() - 1] << (8 -padding)).count_ones() as u64;
-        }
-        c
-
-        // let mut count = (self.data[self.start_byte()] << (self.offset % 8)).count_ones() as u64;
-        // let pad_bits = 8 - ((self.offset + self.length) % 8);
-        // if pad_bits == 8 {
-        //     count += self.data[self.end_byte() - 1].count_ones() as u64;
-        // } else {
-        //     count += (self.data[self.end_byte() - 1] >> pad_bits).count_ones() as u64;
-        // }
-        // for i in self.start_byte() + 1..self.end_byte() - 1 {
-        //     count += self.data[i].count_ones() as u64;
-        // }
-        // count
-    }
-
     /// Returns the byte index of the start of the binary data.
     fn start_byte(&self) -> usize {
         (self.offset / 8) as usize
@@ -543,12 +509,25 @@ impl BitRust {
         None
     }
 
-    pub fn count_ones(&self) -> u64 {
-        self.count()
-    }
-
-    pub fn count_zeros(&self) -> u64 {
-        self.length - self.count()
+    pub fn count(&self) -> u64 {
+        if self.length == 0 {
+            return 0;
+        }
+        let offset = self.offset % 8;
+        let padding = if (self.length + offset) % 8 == 0 { 0 } else { 8 - (self.length + offset) % 8 };
+        // Case where there's only one byte of used data.
+        if self.start_byte() + 1 == self.end_byte() {
+            return ((self.data[self.start_byte()] << offset) >> (offset + padding)).count_ones() as u64;
+        }
+        let mut c: u64 = self.data[self.start_byte()..self.end_byte()].iter().map(|x| x.count_ones() as u64).sum();
+        // Subtract any bits in the offset or padding.
+        if offset != 0 {
+            c = c - (self.data[self.start_byte()] >> (8 - offset)).count_ones() as u64;
+        }
+        if padding != 0 {
+            c = c - (self.data[self.end_byte() - 1] << (8 -padding)).count_ones() as u64;
+        }
+        c
     }
 
     /// Returns a new BitRust with all bits reversed.
@@ -654,12 +633,12 @@ impl BitRust {
 
     /// Returns true if all of the bits are set to 1.
     pub fn all_set(&self) -> bool {
-        self.count_ones() == self.length
+        self.count() == self.length
     }
 
     /// Returns true if any of the bits are set to 1.
     pub fn any_set(&self) -> bool {
-        self.count_ones() != 0
+        self.count() != 0
     }
 
     // Return new BitRust with bit at index set to value.
@@ -908,8 +887,7 @@ fn hex_edge_cases() {
 fn test_count() {
     let x = vec![1, 2, 3];
     let b = BitRust::from_bytes(x, None);
-    assert_eq!(b.count_ones(), 4);
-    assert_eq!(b.count_zeros(), 20);
+    assert_eq!(b.count(), 4);
 }
 
 #[test]
