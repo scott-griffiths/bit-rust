@@ -3,7 +3,6 @@ use std::sync::Arc;
 use pyo3::{pyclass, pymethods, PyRef, PyResult};
 use pyo3::exceptions::{PyIndexError, PyValueError};
 
-
 /// BitRust is a struct that holds an arbitrary amount of binary data. The data is stored
 /// in a Vec<u8> but does not need to be a multiple of 8 bits. A bit offset and a bit length
 /// are stored.
@@ -261,7 +260,7 @@ impl BitRust {
         // Use the find fn to find all instances of b in self and return as an iterator
         let mut start: u64 = 0;
         std::iter::from_fn(move || {
-            let found = self.slice(start, self.length).find(b, bytealigned);
+            let found = self.find(b, start, bytealigned);
             match found {
                 Some(x) => {
                     start = start + x + 1;
@@ -276,6 +275,12 @@ impl BitRust {
 
 #[pymethods]
 impl BitRust {
+
+    // A stop-gap. We really want to return an iterator of u64.
+    pub fn findall_list(&self, b: &BitRust, bytealigned: bool) -> Vec<u64>  {
+        let pos: Vec<u64> = self.find_all_rust(b, bytealigned).collect();
+        pos
+    }
 
     pub fn __len__(&self) -> usize {
         self.length as usize
@@ -497,33 +502,33 @@ impl BitRust {
         }
     }
     
-    pub fn find(&self, b: &BitRust, bytealigned: bool) -> Option<u64> {
-        if b.length > self.length {
+    pub fn find(&self, b: &BitRust, start: u64, bytealigned: bool) -> Option<u64> {
+        if b.length > self.length - start {
             return None;
         }
         let step = if bytealigned { 8 } else { 1 };
-        let mut pos = 0;
+        let mut pos = if bytealigned { (start + 7) / 8 * 8 } else { start };
         while pos <= self.length - b.length {
             if self.slice(pos, pos + b.length) == *b {
-                return Some(pos);
+                return Some(pos - start);
             }
             pos += step;
         }
         None
     }
     
-    pub fn rfind(&self, b: &BitRust, bytealigned: bool) -> Option<u64> {
-        if b.length > self.length {
+    pub fn rfind(&self, b: &BitRust, start: u64, bytealigned: bool) -> Option<u64> {
+        if b.length + start > self.length {
             return None;
         }
         let step = if bytealigned { 8 } else { 1 };
         let mut pos = self.length - b.length;
-        if step == 8 {
+        if bytealigned {
             pos = pos / 8 * 8;
         }
-        while pos >= step {
+        while pos >= start + step {
             if self.slice(pos, pos + b.length) == *b {
-                return Some(pos);
+                return Some(pos - start);
             }
             pos -= step;
         }
@@ -945,19 +950,19 @@ fn test_invert() {
 fn test_find() {
     let b1 = BitRust::from_zeros(10, None);
     let b2 = BitRust::from_ones(2, None);
-    assert_eq!(b1.find(&b2, false), None);
+    assert_eq!(b1.find(&b2, 0,false), None);
     let b3 = BitRust::from_bin("00001110", None).unwrap();
     let b4 = BitRust::from_bin("01", None).unwrap();
-    assert_eq!(b3.find(&b4, false), Some(3));
-    assert_eq!(b3.slice(2, b3.length()).find(&b4, false), Some(1));
+    assert_eq!(b3.find(&b4, 0, false), Some(3));
+    assert_eq!(b3.find(&b4, 2,false), Some(1));
 }
 
 #[test]
 fn test_rfind() {
     let b1 = BitRust::from_hex("00780f0", None).unwrap();
     let b2 = BitRust::from_bin("1111", None).unwrap();
-    assert_eq!(b1.rfind(&b2, false), Some(20));
-    assert_eq!(b1.find(&b2, false), Some(9));
+    assert_eq!(b1.rfind(&b2, 0, false), Some(20));
+    assert_eq!(b1.find(&b2, 0, false), Some(9));
 
 }
 

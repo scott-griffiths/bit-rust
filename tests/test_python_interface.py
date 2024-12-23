@@ -32,8 +32,8 @@ def test_join():
 def test_find():
     a = BitRust.from_bin('00000110001110')
     b = BitRust.from_bin('11')
-    assert a.find(b, False) == 5
-    assert a.find(b, True) is None
+    assert a.find(b, 0, False) == 5
+    assert a.find(b, 0, True) is None
 
 def test_from_oct():
     a = BitRust.from_oct('776')
