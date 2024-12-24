@@ -660,20 +660,31 @@ impl BitRust {
 
     // Return new BitRust with bit at index set to value.
     pub fn set_index(&self, value: bool, mut index: i64) -> PyResult<Self> {
-        if index < 0 {
-            index += self.length as i64;
-            if index < 0 {
+        self.set_indices(value, vec![index])
+    }
+
+    pub fn set_indices(&self, value: bool, indices: Vec<i64>) -> PyResult<Self> {
+        let mut data: Vec<u8> = self.data[self.start_byte()..self.end_byte()].to_vec();
+        let mut positive_indices: Vec<u64> = vec![];
+        for index in indices {
+            if -index > self.length as i64 {
                 return Err(PyIndexError::new_err("Negative index past the end"));
             }
+            positive_indices.push(if index < 0 { (index + self.length as i64) as u64 } else { index as u64 });
         }
-        let mut data: Vec<u8> = self.data[self.start_byte()..self.end_byte()].to_vec();
-        let p: u64 = index as u64 + self.offset;
-        let byte_offset = (p / 8) as usize;
-        let bit_offset = p % 8;
         if value {
-            data[byte_offset] |= 128 >> bit_offset;
-        } else {
-            data[byte_offset] &= !(128 >> bit_offset);
+            for index in positive_indices {
+                let byte_offset = ((index + self.offset) / 8) as usize;
+                let bit_offset = (index + self.offset) % 8;
+                data[byte_offset] |= 128 >> bit_offset;
+            }
+        }
+        else {
+            for index in positive_indices {
+                let byte_offset = ((index + self.offset) / 8) as usize;
+                let bit_offset = (index + self.offset) % 8;
+                data[byte_offset] &= !(128 >> bit_offset);
+            }
         }
         Ok(BitRust {
             data: Arc::new(data),
@@ -704,26 +715,6 @@ impl BitRust {
         *self = joined;
         Ok(())
     }
-
-
-//      pub fn set_from_iterable(&self, value: bool, indices: &Vec<u64>) -> Self {
-//         let mut data: Vec<u8> = self.data[self.start_byte()..self.end_byte()].to_vec();
-//         for i in indices {
-//             let p: u64 = i + self.offset;
-//             let byte = data[(p / 8) as usize];
-//             if value {
-//                 data[(p / 8) as usize] = byte | (128 >> (p % 8));
-//             } else {
-//                 data[(p / 8) as usize] = byte & !(128 >> (p % 8));
-//             }
-//         }
-//         Bits {
-//             data: Arc::new(data),
-//             offset: self.offset,
-//             length: self.length,
-//         }
-//     }
-
 }
 
 
@@ -1026,4 +1017,15 @@ fn test_all_set() {
     assert!(b.all_set());
     let c = BitRust::from_oct("7777777777", None).unwrap();
     assert!(c.all_set());
+}
+
+#[test]
+fn test_set_index() {
+    let b = BitRust::from_zeros(10, None);
+    let b = b.set_index(true, 0).unwrap();
+    assert_eq!(b.to_bin(), "1000000000");
+    let b = b.set_index(true, -1).unwrap();
+    assert_eq!(b.to_bin(), "1000000001");
+    let b = b.set_index(false, 0).unwrap();
+    assert_eq!(b.to_bin(), "0000000001");
 }
