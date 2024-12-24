@@ -11,8 +11,8 @@ use hamming;
 #[pyclass]
 pub struct BitRust {
     data: Arc<Vec<u8>>,
-    offset: u64,
-    length: u64,
+    offset: i64,
+    length: i64,
     mutable: bool,
 }
 
@@ -62,6 +62,17 @@ impl PartialEq for BitRust {
         if self.length != other.length {
             return false;
         }
+        // if self.length <= 8 {
+        //     if
+        // }
+        if self.offset % 8 == 0 && other.offset % 8 == 0 {
+            if self.length % 8 == 0 {
+                return self.data[self.start_byte()..self.end_byte()] == other.data[other.start_byte()..other.end_byte()];
+            }
+            if self.data[self.start_byte()..self.end_byte() - 1] != other.data[other.start_byte()..other.end_byte() - 1] {
+                return false;
+            }
+        }
         self.to_bin() == other.to_bin()
     }
 }
@@ -96,8 +107,8 @@ impl BitRust {
             return bits_vec[0].clone();
         }
         let mut data = bits_vec[0].data[bits_vec[0].start_byte()..bits_vec[0].end_byte()].to_vec();
-        let new_offset: u64 = bits_vec[0].offset % 8;
-        let mut new_length: u64 = bits_vec[0].length;
+        let new_offset: i64 = bits_vec[0].offset % 8;
+        let mut new_length: i64 = bits_vec[0].length;
         // Go though the vec of Bits and set the offset of each to the number of bits in the final byte of the previous one
         for bits in &bits_vec[1..] {
             if bits.length == 0 {
@@ -137,7 +148,7 @@ impl BitRust {
     }
     
     /// Return copy with a new offset (< 8). Any excess bytes will be trimmed.
-    fn copy_with_new_offset(&self, new_offset: u64) -> Self {
+    fn copy_with_new_offset(&self, new_offset: i64) -> Self {
         assert!(new_offset < 8);
         // Create a new Bits object with the same value but a different offset.
         // Each byte will in general have to be bit shifted to the left or right.
@@ -180,7 +191,7 @@ impl BitRust {
             }
         }
         else {
-            let right_shift: u64 = new_offset - bit_offset;
+            let right_shift: i64 = new_offset - bit_offset;
             debug_assert!(right_shift < 8);
             debug_assert!(new_byte_length == old_byte_length || new_byte_length == old_byte_length + 1);
             new_data[0] = self.data[byte_offset] >> right_shift;
@@ -200,7 +211,7 @@ impl BitRust {
     }
     
     /// Slice used internally without bounds checking.
-    fn slice(&self, start_bit: u64, end_bit: u64) -> Self {
+    fn slice(&self, start_bit: i64, end_bit: i64) -> Self {
         assert!(start_bit <= end_bit);
         assert!(end_bit <= self.length);
         assert!(!self.mutable);
@@ -231,9 +242,9 @@ impl BitRust {
         }
     }
     // I think this works as a Rust version. Keeping this copy for reference.
-    pub fn find_all_rust<'a>(&'a self, b: &'a BitRust, bytealigned: bool) -> impl Iterator<Item = u64> + 'a {
+    pub fn find_all_rust<'a>(&'a self, b: &'a BitRust, bytealigned: bool) -> impl Iterator<Item = i64> + 'a {
         // Use the find fn to find all instances of b in self and return as an iterator
-        let mut start: u64 = 0;
+        let mut start: i64 = 0;
         std::iter::from_fn(move || {
             let found = self.find(b, start, bytealigned);
             match found {
@@ -251,9 +262,9 @@ impl BitRust {
 #[pymethods]
 impl BitRust {
 
-    // A stop-gap. We really want to return an iterator of u64.
-    pub fn findall_list(&self, b: &BitRust, bytealigned: bool) -> Vec<u64>  {
-        let pos: Vec<u64> = self.find_all_rust(b, bytealigned).collect();
+    // A stop-gap. We really want to return an iterator of i64.
+    pub fn findall_list(&self, b: &BitRust, bytealigned: bool) -> Vec<i64>  {
+        let pos: Vec<i64> = self.find_all_rust(b, bytealigned).collect();
         pos
     }
 
@@ -267,7 +278,7 @@ impl BitRust {
 
     #[pyo3(signature = (length, mutable=None))]
     #[staticmethod]
-    pub fn from_zeros(length: u64, mutable: Option<bool>) -> Self {
+    pub fn from_zeros(length: i64, mutable: Option<bool>) -> Self {
         BitRust {
             data: Arc::new(vec![0; ((length + 7) / 8) as usize]),
             offset: 0,
@@ -278,7 +289,7 @@ impl BitRust {
 
     #[pyo3(signature = (length, mutable=None))]
     #[staticmethod]
-    pub fn from_ones(length: u64, mutable: Option<bool>) -> Self {
+    pub fn from_ones(length: i64, mutable: Option<bool>) -> Self {
         BitRust {
             data: Arc::new(vec![0xff; ((length + 7) / 8) as usize]),
             offset: 0,
@@ -290,7 +301,7 @@ impl BitRust {
     #[pyo3(signature = (data, mutable=None))]
     #[staticmethod]
     pub fn from_bytes(data: Vec<u8>, mutable: Option<bool>) -> Self {
-        let bitlength = (data.len() as u64) * 8;
+        let bitlength = (data.len() as i64) * 8;
         BitRust {
             data: Arc::new(data),
             offset: 0,
@@ -301,9 +312,9 @@ impl BitRust {
 
     #[pyo3(signature = (data, offset, mutable=None))]
     #[staticmethod]
-    pub fn from_bytes_with_offset(data: Vec<u8>, offset: u64, mutable: Option<bool>) -> Self {
+    pub fn from_bytes_with_offset(data: Vec<u8>, offset: i64, mutable: Option<bool>) -> Self {
         assert!(offset < 8);
-        let bitlength = (data.len() as u64) * 8 - offset;
+        let bitlength = (data.len() as i64) * 8 - offset;
         BitRust {
             data: Arc::new(data),
             offset,
@@ -331,7 +342,7 @@ impl BitRust {
         Ok(BitRust {
             data: Arc::new(data),
             offset: 0,
-            length: binary_string.len() as u64,
+            length: binary_string.len() as i64,
             mutable: mutable.unwrap_or(false),
         })
     }
@@ -351,7 +362,7 @@ impl BitRust {
         Ok(BitRust {
             data: Arc::new(data),
             offset: 0,
-            length: hex.len() as u64 * 4,
+            length: hex.len() as i64 * 4,
             mutable: mutable.unwrap_or(false),
         })
     }
@@ -400,7 +411,7 @@ impl BitRust {
     }
 
     // Just the byte data without any shifting or padding.
-    pub fn to_byte_data_with_offset(&self) -> (Vec<u8>, u64) {
+    pub fn to_byte_data_with_offset(&self) -> (Vec<u8>, i64) {
         (self.data[self.start_byte()..self.end_byte()].to_vec(), self.offset % 8)
     }
 
@@ -493,7 +504,7 @@ impl BitRust {
         }
     }
     
-    pub fn find(&self, b: &BitRust, start: u64, bytealigned: bool) -> Option<u64> {
+    pub fn find(&self, b: &BitRust, start: i64, bytealigned: bool) -> Option<i64> {
         if b.length > self.length - start {
             return None;
         }
@@ -508,7 +519,7 @@ impl BitRust {
         None
     }
     
-    pub fn rfind(&self, b: &BitRust, start: u64, bytealigned: bool) -> Option<u64> {
+    pub fn rfind(&self, b: &BitRust, start: i64, bytealigned: bool) -> Option<i64> {
         if b.length + start > self.length {
             return None;
         }
@@ -526,7 +537,7 @@ impl BitRust {
         None
     }
 
-    pub fn count(&self) -> u64 {
+    pub fn count(&self) -> i64 {
         if self.length == 0 {
             return 0;
         }
@@ -534,15 +545,15 @@ impl BitRust {
         let padding = if (self.length + offset) % 8 == 0 { 0 } else { 8 - (self.length + offset) % 8 };
         // Case where there's only one byte of used data.
         if self.start_byte() + 1 == self.end_byte() {
-            return ((self.data[self.start_byte()] << offset) >> (offset + padding)).count_ones() as u64;
+            return ((self.data[self.start_byte()] << offset) >> (offset + padding)).count_ones() as i64;
         }
-        let mut c = hamming::weight(&self.data[self.start_byte()..self.end_byte()]);
+        let mut c = hamming::weight(&self.data[self.start_byte()..self.end_byte()]) as i64;
         // Subtract any bits in the offset or padding.
         if offset != 0 {
-            c = c - (self.data[self.start_byte()] >> (8 - offset)).count_ones() as u64;
+            c = c - (self.data[self.start_byte()] >> (8 - offset)).count_ones() as i64;
         }
         if padding != 0 {
-            c = c - (self.data[self.end_byte() - 1] << (8 -padding)).count_ones() as u64;
+            c = c - (self.data[self.end_byte() - 1] << (8 -padding)).count_ones() as i64;
         }
         c
     }
@@ -562,13 +573,10 @@ impl BitRust {
             mutable: false,
         }
     }
-    
-    // TODO
-    // pub fn iter(&self) -> iter<bool> {}
 
     /// Returns the bool value at a given bit index.
     pub fn getindex(&self, mut bit_index: i64) -> PyResult<bool> {
-        let length = self.length as i64;
+        let length = self.length;
         if bit_index >= length || bit_index < -length {
             return Err(PyIndexError::new_err("Out of range."));
         }
@@ -576,18 +584,18 @@ impl BitRust {
             bit_index += length;
         }
         debug_assert!(bit_index >= 0);
-        let p: u64 = bit_index as u64 + self.offset;
+        let p: i64 = bit_index + self.offset;
         let byte = self.data[(p / 8) as usize];
         Ok(byte & (128 >> (p % 8)) != 0)
     }
     
     /// Returns the bit offset to the data in the Bits object.
-    pub fn offset(&self) -> u64 {
+    pub fn offset(&self) -> i64 {
         self.offset
     }
 
     /// Returns the length of the Bits object in bits.
-    pub fn length(&self) -> u64 {
+    pub fn length(&self) -> i64 {
         self.length
     }
 
@@ -604,7 +612,7 @@ impl BitRust {
 
     /// Return a slice of the current BitRust. Uses a view on the current byte data.
     #[pyo3(signature = (start_bit, end_bit=None))]
-    pub fn getslice(&self, start_bit: u64, end_bit: Option<u64>) -> PyResult<Self> {
+    pub fn getslice(&self, start_bit: i64, end_bit: Option<i64>) -> PyResult<Self> {
         // assert!(self.mutable == false);
         let end_bit = end_bit.unwrap_or(self.length);
         if start_bit >= end_bit {
@@ -625,7 +633,7 @@ impl BitRust {
 
     // Return new BitRust with single bit flipped. If pos is None then flip all the bits.
     #[pyo3(signature = (pos=None))]
-    pub fn invert(&self, pos: Option<u64>) -> Self {
+    pub fn invert(&self, pos: Option<i64>) -> Self {
         let mut data: Vec<u8> = Vec::new();
         match pos {
             None => {
@@ -659,18 +667,18 @@ impl BitRust {
     }
 
     // Return new BitRust with bit at index set to value.
-    pub fn set_index(&self, value: bool, mut index: i64) -> PyResult<Self> {
+    pub fn set_index(&self, value: bool, index: i64) -> PyResult<Self> {
         self.set_indices(value, vec![index])
     }
 
     pub fn set_indices(&self, value: bool, indices: Vec<i64>) -> PyResult<Self> {
         let mut data: Vec<u8> = self.data[self.start_byte()..self.end_byte()].to_vec();
-        let mut positive_indices: Vec<u64> = vec![];
+        let mut positive_indices: Vec<i64> = vec![];
         for index in indices {
-            if -index > self.length as i64 {
+            if -index > self.length {
                 return Err(PyIndexError::new_err("Negative index past the end"));
             }
-            positive_indices.push(if index < 0 { (index + self.length as i64) as u64 } else { index as u64 });
+            positive_indices.push(if index < 0 { index + self.length } else { index });
         }
         if value {
             for index in positive_indices {
@@ -704,7 +712,7 @@ impl BitRust {
         }
     }
 
-    pub fn set_mutable_slice(&mut self, start: u64, end: u64, value: &BitRust) -> PyResult<()> {
+    pub fn set_mutable_slice(&mut self, start: i64, end: i64, value: &BitRust) -> PyResult<()> {
         // TODO: I think this next condition is correct, but removing it lets the tests pass...?
         // if self.mutable == false {
         //     return Err(PyValueError::new_err("Not mutable"));
@@ -973,7 +981,7 @@ fn test_and() {
 fn test_findall() {
     let b = BitRust::from_hex("00ff0ff0", None).unwrap();
     let a = BitRust::from_hex("ff", None).unwrap();
-    let q: Vec<u64> = b.find_all_rust(&a, false).collect();
+    let q: Vec<i64> = b.find_all_rust(&a, false).collect();
     assert_eq!(q, vec![8, 20]);
 }
 
@@ -983,7 +991,7 @@ fn test_copy_with_new_offset() {
     for bit_str in bit_list {
         for start in 0..bit_str.len() {
             for end in start..bit_str.len() {
-                let a = BitRust::from_bin(bit_str, None).unwrap().slice(start as u64, end as u64);
+                let a = BitRust::from_bin(bit_str, None).unwrap().slice(start as i64, end as i64);
                 for offset in 0..=7 {
                     let b = a.copy_with_new_offset(offset);
                     assert_eq!(b.to_bin(), &bit_str[start..end], "'{}' {} {} {}", bit_str, offset, start, end);
