@@ -41,7 +41,7 @@ impl Clone for BitRust {
     fn clone(&self) -> Self {
         if self.mutable {
             BitRust {
-                data: Arc::new(self.data[self.start_byte()..self.end_byte()].to_vec()),
+                data: Arc::new(self.active_data()),
                 offset: self.offset,
                 length: self.length,
                 mutable: true,
@@ -146,6 +146,10 @@ impl BitRust {
     fn end_byte(&self) -> usize {
         ((self.offset + self.length + 7) / 8) as usize
     }
+
+    fn active_data(&self) -> Vec<u8> {
+        self.data[self.start_byte()..self.end_byte()].to_vec()
+    }
     
     /// Return copy with a new offset (< 8). Any excess bytes will be trimmed.
     fn copy_with_new_offset(&self, new_offset: i64) -> Self {
@@ -164,7 +168,7 @@ impl BitRust {
         let bit_offset = self.offset % 8;
         if new_offset == bit_offset {
             return BitRust {
-                data: Arc::new(self.data[self.start_byte()..self.end_byte()].to_vec()),
+                data: Arc::new(self.active_data()),
                 offset: new_offset,
                 length: self.length,
                 mutable: self.mutable,
@@ -235,7 +239,7 @@ impl BitRust {
             }
         }
         BitRust {
-            data: Arc::new(self.data[self.start_byte()..self.end_byte()].to_vec()),
+            data: Arc::new(self.active_data()),
             offset: self.offset % 8,
             length: self.length,
             mutable: self.mutable,
@@ -412,7 +416,7 @@ impl BitRust {
 
     // Just the byte data without any shifting or padding.
     pub fn to_byte_data_with_offset(&self) -> (Vec<u8>, i64) {
-        (self.data[self.start_byte()..self.end_byte()].to_vec(), self.offset % 8)
+        (self.active_data(), self.offset % 8)
     }
 
     // Return bytes that can easily be converted to a uint in Python
@@ -421,7 +425,7 @@ impl BitRust {
         let new_offset = (self.offset + (8 - (self.length + self.offset) % 8)) % 8;
         debug_assert!((new_offset + self.length) % 8 == 0);
         let mut t = if self.offset == new_offset {
-             self.data[self.start_byte()..self.end_byte()].to_vec()
+             self.active_data()
         } else {
             self.copy_with_new_offset(new_offset).data.to_vec()
         };
@@ -437,7 +441,7 @@ impl BitRust {
         }
         let bit_offset = self.offset % 8;
         let nibble_offset_data: &Vec<u8> = if bit_offset == 0 || bit_offset == 4 {
-            &self.data[self.start_byte()..self.end_byte()].to_vec()
+            &self.active_data()
         } else {
             &self.copy_with_new_offset(0).data
         };
@@ -550,10 +554,10 @@ impl BitRust {
         let mut c = hamming::weight(&self.data[self.start_byte()..self.end_byte()]) as i64;
         // Subtract any bits in the offset or padding.
         if offset != 0 {
-            c = c - (self.data[self.start_byte()] >> (8 - offset)).count_ones() as i64;
+            c -= (self.data[self.start_byte()] >> (8 - offset)).count_ones() as i64;
         }
         if padding != 0 {
-            c = c - (self.data[self.end_byte() - 1] << (8 -padding)).count_ones() as i64;
+            c -= (self.data[self.end_byte() - 1] << (8 -padding)).count_ones() as i64;
         }
         c
     }
@@ -644,7 +648,7 @@ impl BitRust {
             }
             Some(pos) => {
                 // Just invert the bit at pos
-                data = self.data[self.start_byte()..self.end_byte()].to_vec();
+                data = self.active_data();
                 data[((pos + self.offset) / 8) as usize] ^= 128 >> ((pos + self.offset) % 8);
             }
         }
@@ -672,7 +676,7 @@ impl BitRust {
     }
 
     pub fn set_indices(&self, value: bool, indices: Vec<i64>) -> PyResult<Self> {
-        let mut data: Vec<u8> = self.data[self.start_byte()..self.end_byte()].to_vec();
+        let mut data: Vec<u8> = self.active_data();
         let mut positive_indices: Vec<i64> = vec![];
         for index in indices {
             if -index > self.length {
@@ -705,7 +709,7 @@ impl BitRust {
     /// Return a copy with the mutable flag set.
     pub fn get_mutable_copy(&self) -> Self {
         BitRust {
-            data: Arc::new(self.data[self.start_byte()..self.end_byte()].to_vec()),
+            data: Arc::new(self.active_data()),
             offset: self.offset % 8,
             length: self.length,
             mutable: true,
