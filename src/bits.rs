@@ -2,6 +2,7 @@ use std::fmt;
 use std::sync::Arc;
 use pyo3::{pyclass, pymethods, PyRef, PyResult};
 use pyo3::exceptions::{PyIndexError, PyValueError};
+use hamming;
 
 /// BitRust is a struct that holds an arbitrary amount of binary data. The data is stored
 /// in a Vec<u8> but does not need to be a multiple of 8 bits. A bit offset and a bit length
@@ -535,7 +536,7 @@ impl BitRust {
         if self.start_byte() + 1 == self.end_byte() {
             return ((self.data[self.start_byte()] << offset) >> (offset + padding)).count_ones() as u64;
         }
-        let mut c: u64 = self.data[self.start_byte()..self.end_byte()].iter().map(|x| x.count_ones() as u64).sum();
+        let mut c = hamming::weight(&self.data[self.start_byte()..self.end_byte()]);
         // Subtract any bits in the offset or padding.
         if offset != 0 {
             c = c - (self.data[self.start_byte()] >> (8 - offset)).count_ones() as u64;

@@ -10,3 +10,4 @@ name = "bit_rust"
 [dependencies]
 hex = "0.4.3"
 pyo3 = "0.23.3"
+hamming = "0.1"
