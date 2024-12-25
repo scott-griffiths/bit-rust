@@ -391,8 +391,8 @@ impl BitRust {
         (self.active_data(), self.offset % 8)
     }
 
-    // Return bytes that can easily be converted to a uint in Python
-    pub fn to_uint_byte_data(&self) -> Vec<u8> {
+    // Return bytes that can easily be converted to an int in Python
+    pub fn to_int_byte_data(&self, signed: bool) -> Vec<u8> {
         // Want the offset to make there be no padding.
         let new_offset = (self.offset + (8 - (self.length + self.offset) % 8)) % 8;
         debug_assert!((new_offset + self.length) % 8 == 0);
@@ -402,7 +402,12 @@ impl BitRust {
             self.copy_with_new_offset(new_offset).data.to_vec()
         };
         if new_offset != 0 {
+            // Set all the new offset bits to zero
             t[0] &= (1 << (8 - new_offset)) - 1;
+            // For signed, if top bit is set, so need to set all the new offset bits too.
+            if signed == true && (t[0] & (0x80 >> new_offset) != 0) {
+                t[0] |= !(0xff >> new_offset);
+            }
         }
         t
     }
